@@ -1,0 +1,13 @@
+@layer utilities {
+    .animate-move-light {
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+      );
+      background-size: 200% 100%;
+      animation: move-light 3s linear infinite;
+    }
+  }
+  
