@@ -12,13 +12,7 @@ import { UNBLOCK_USER_ROUTE } from "@/utils/constants";
 function Detail({ onClose}) {
   const [isBlocked, setIsBlocked] = useState(false);
   const { userInfo,selectedChatData,setSelectedChatData, setFriends,setSelectedChatMessages,removeFriend } = useAppStore();
- // Add these routes
-   
-//  const mediaMessages = selectedChatMessages.filter((msg) => {
-//   const mediaTypes = ["image", "video", "audio", "document"];
-//   return mediaTypes.includes(msg.type);
-// });
-
+ 
 
  useEffect(() => {
   // Check if the selected chat user is blocked
@@ -31,12 +25,7 @@ function Detail({ onClose}) {
   checkIfBlocked();
 }, [selectedChatData]);
 
-// const checkIfBlocked = async () => {
-//   if (userInfo.blockedUsers.includes(selectedChatData._id)) {
-//     // Replace this with your actual logic to determine if the user is blocked
-//     setIsBlocked(true); // Assuming `isBlocked` is part of selectedChatData
-//   }
-// };
+
 
   const deleteChat = async () => {
     try {
@@ -221,114 +210,10 @@ const handleUnblockUser = async () => {
             </div>
 
 
-
-
-
-
-
-            {/* Media */}
-            {/* <div className="media flex flex-col gap-2 p-2">
-              <div className="mediaLink flex items-center h-[40px]">
-                <div className="title flex-1">
-                  <span className="font-semibold text-slate-900 text-md mb-2">
-                    Media, Links, Docs
-                  </span>
-                </div>
-                <div className="count flex gap-1 items-center">
-                  <p>{mediaMessages.length}</p>
-                  <img
-                    src="./next.png"
-                    alt="Next"
-                    className="w-[20px] h-[20px] object-contain"
-                  />
-                </div>
-              </div>
-              <div className="mediaGrid grid grid-cols-3 gap-2">
-                {mediaMessages.map((msg) => {
-                  if (msg.type === "image") {
-                    return (
-                      <img
-                        key={msg.id}
-                        src={msg.url}
-                        alt="Media"
-                        className="w-[100px] h-[100px] object-cover"
-                      />
-                    );
-                  } else if (msg.type === "video") {
-                    return (
-                      <video
-                        key={msg.id}
-                        className="w-[100px] h-[100px] object-cover"
-                        controls
-                      >
-                        <source src={msg.url} type="video/mp4" />
-                        Your browser does not support the video tag.
-                      </video>
-                    );
-                  } else if (msg.type === "audio") {
-                    return (
-                      <audio key={msg.id} controls className="w-[100px]">
-                        <source src={msg.url} type="audio/mpeg" />
-                        Your browser does not support the audio tag.
-                      </audio>
-                    );
-                  } else if (msg.type === "document") {
-                    return (
-                      <div key={msg.id} className="docLink p-2">
-                        <a href={msg.url} target="_blank" rel="noopener noreferrer">
-                          Document
-                        </a>
-                      </div>
-                    );
-                  }
-                  return null;
-                })}
-              </div>
-            </div>
- */}
-
-
             
 
             <Separator className="bg-slate-900 h-[2px] mt-2" />
 
-            {/* Starred Messages */}
-            {/* <div className="starred flex items-center">
-              <div className="star flex items-center flex-1 w-[50px] h-[50px] gap-1">
-                <img
-                  src="./public/star.png"
-                  alt="Starred Messages"
-                  className="w-[50px] h-[35px] object-contain"
-                />
-                <span>Starred Messages</span>
-              </div>
-              <div className="flex items-center">
-                <img
-                  src="./next.png"
-                  alt="Next"
-                  className="w-[20px] h-[20px] object-contain"
-                />
-              </div>
-            </div> */}
-
-            {/* <Separator className="bg-slate-900 h-[2px] mt-2" /> */}
-
-            {/* Mute Notifications */}
-            {/* <div className="mute flex items-center">
-              <div className="star flex items-center flex-1">
-                <img
-                  src="./public/bell.png"
-                  alt="Mute Notifications"
-                  className="w-[50px] h-[50px] object-contain"
-                />
-                <span>Mute Notifications</span>
-              </div>
-              <div className="flex items-center">
-                <Switch />
-              </div>
-            </div> */}
-
-            {/* <Separator className="bg-slate-900 h-[2px] mt-2" /> */}
 
             {/* Action buttons */}
             <div className="buttons flex gap-5 items-center p-3">
