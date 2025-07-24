@@ -92,47 +92,12 @@ const toggleBdayDialog=()=>{
          
   };
    
-  // const handleAcceptCall = () => {
-  //   setVideoCall(true);
-  //   setShowCallDialog(false);
-  //   setIncomingCall(false);
-  //   setIsCallAccepted(true);
-  //   navigate("/VideoCall");
-  // };
-  
-  // const handleRejectCall = () => {
-  //   // stopRingtone();
-  //   setVideoCall(false);
-  //   setShowCallDialog(false);
-  //   setIncomingCall(false);
-  //   setIsCallAccepted(true);
-  // };
-
+ 
 
   const isUserBlocked = () => {
     return blockList?.includes(selectedChatData._id);
   };
 
-  // useEffect(() => {
-  //   if (!socket) return;
-    
-  //   socket.on('incoming-call', (data) => {
-  //     // console.log("INNNN")
-  //     // playRingtone();
-  //     setShowCallDialog(true);
-  //     setcaller(data.caller)
-  //     console.log(data.caller)
-  //     setCallerId(data.callerId);
-
-  //   });
-
-  //   return () => {
-  //     socket.off('incoming-call');
-  //   };
-  // }, [socket]);
-
- 
-  
   
   useEffect(() => {
     if (userInfo.blockedUsers && userInfo.blockedUsers.length > 0) {
@@ -272,9 +237,6 @@ const toggleBdayDialog=()=>{
       
       socket.emit("sendMessage", message);
 
-      // **Optional:** Optimistic UI Update (Immediate Feedback)
-      // Uncomment the following line if you have `addMessages` in store
-      // addMessages(message);
 
       setText(""); // Clear text after sending
       setAttachedFile({ file: null, type: null }); // Reset attached file
