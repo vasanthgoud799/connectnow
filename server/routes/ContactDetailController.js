@@ -55,9 +55,6 @@ export const blockUser = async (req, res) => {
     const user1 = req.userId; // Get the current user's ID
     const user2 = req.body.id; // Get the other user's ID to block
 
-    // console.log("User1 (current user):", user1); // Log user1
-    // console.log("User2 (to block):", user2); // Log user2
-
     if (!user1 || !user2) {
       return res.status(400).send("Both user IDs are required.");
     }
@@ -82,9 +79,6 @@ export const unblockUser = async (req, res) => {
   try {
     const user1 = req.userId; // Get the current user's ID
     const user2 = req.body.id; // Get the other user's ID to unblock
-
-    // console.log("User1 (current user):", user1); // Log user1
-    // console.log("User2 (to unblock):", user2); // Log user2
 
     if (!user1 || !user2) {
       return res.status(400).send("Both user IDs are required.");
