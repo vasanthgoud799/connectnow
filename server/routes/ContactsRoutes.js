@@ -9,10 +9,8 @@ import { getUserDetails } from "../controllers/ContactsController.js";
 
 const contactsRoutes = Router();
 
-// Search for contacts (authenticated)
 contactsRoutes.post("/search", verifyToken, searchContacts);
 
-// Add a new friend (authenticated)
 contactsRoutes.post("/addUser", verifyToken, addFriend);
 
 contactsRoutes.post("/details", verifyToken, getUserDetails);
