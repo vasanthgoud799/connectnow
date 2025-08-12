@@ -4,6 +4,10 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
 import authRoutes from "./routes/AuthRoutes.js";
+import contactsRoutes from "./routes/ContactsRoutes.js";
+import setupSocket from "./socket.js";
+import messagesRoutes from "./routes/MessagesRoutes.js";
+import detailRoutes from "./routes/ContactDetailRoutes.js";
 
 dotenv.config();
 
@@ -26,6 +30,9 @@ app.use(cookieParser());
 app.use(express.json({ limit: "3000mb" })); // Adjust the limit as needed
 
 app.use("/api/auth", authRoutes);
+app.use("/api/contacts", contactsRoutes);
+app.use("/api/messages", messagesRoutes);
+app.use("/api/details", detailRoutes);
 
 mongoose
   .connect(databaseUrl)
@@ -40,4 +47,4 @@ const server = app.listen(port, () => {
   console.log(`Server is running at https:/localhost:${port}`);
 });
 
-// setupSocket(server);
+setupSocket(server);
