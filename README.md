@@ -1,7 +1,3 @@
-Here’s a professionally structured README for your chat application, following the engaging style and thorough sectioning from modern open-source projects:[1][2][3][4]
-
-***
-
 # Connect Now: Real-Time Chat & Video App
 
 Connect Now is a feature-rich, full-stack chat application that brings seamless real-time messaging and peer-to-peer video calling to users. With a responsive modern UI, robust notification system, file sharing, automated event reminders, and strong privacy controls, it’s designed for vibrant conversations and personal connections.
