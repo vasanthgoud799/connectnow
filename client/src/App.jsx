@@ -5,8 +5,12 @@ import Home from "./components/Home";
 import { Navigate, Route,Routes } from "react-router-dom";
 import Profile from "./components/Profile";
 import { useAppStore } from "./store";
-import { apiClient } from "./lib/api-client";
-import { CLERK_SYNC_ROUTE, GET_USER_INFO } from "./utils/constants";
+import {
+  apiClient,
+  clearPersistedAppSession,
+  persistAppSession,
+} from "./lib/api-client";
+import { CLERK_SYNC_ROUTE } from "./utils/constants";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { ensureUserE2EEIdentity } from "./crypto/e2eeService";
 
@@ -70,12 +74,13 @@ function App() {
         const token = await getToken();
         if (!token) {
           hasSyncedRef.current = false;
+          clearPersistedAppSession();
           setUserInfo(undefined);
           setLoading(false);
           return;
         }
 
-        await apiClient.post(
+        const syncResponse = await apiClient.post(
           CLERK_SYNC_ROUTE,
           {
             website: "",
@@ -100,17 +105,18 @@ function App() {
           }
         );
 
-        const sessionResponse = await apiClient.get(GET_USER_INFO, {
-          withCredentials: true,
-        });
-
-        if (sessionResponse.status === 200 && sessionResponse.data?.id) {
+        if (syncResponse.status === 200 && syncResponse.data?.user?.id) {
+          persistAppSession({
+            token: syncResponse.data?.session?.token || "",
+            csrfToken: syncResponse.data?.session?.csrfToken || "",
+          });
           clearRetryTimeout();
           retryCountRef.current = 0;
           hasSyncedRef.current = true;
-          setUserInfo(sessionResponse.data);
+          setUserInfo(syncResponse.data.user);
         } else {
           hasSyncedRef.current = false;
+          clearPersistedAppSession();
           setUserInfo(undefined);
         }
       } catch (error) {
@@ -136,6 +142,7 @@ function App() {
           if (isRetry) {
             console.error("Clerk sync retry failed. No further retries will be attempted.");
           }
+          clearPersistedAppSession();
           setUserInfo(undefined);
         }
       } finally {
@@ -151,6 +158,7 @@ function App() {
       hasSyncedRef.current = false;
       syncInFlightRef.current = false;
       retryCountRef.current = 0;
+      clearPersistedAppSession();
       setUserInfo(undefined);
       setLoading(false);
       return;

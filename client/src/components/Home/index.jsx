@@ -30,6 +30,7 @@ import GlobalSearchModal from "./GlobalSearchModal";
 import NotificationDrawer from "./NotificationDrawer";
 
 import { apiClient } from "@/lib/api-client";
+import { clearPersistedAppSession } from "@/lib/api-client";
 import { useAppStore } from "@/store";
 import { callStates } from "@/store/actions/callActions";
 import {
@@ -271,6 +272,7 @@ function Home({ activeUsers = [], callState }) {
     setFocusedMessageId(undefined);
     setNotifications([]);
     setNotificationUnreadCount(0);
+    clearPersistedAppSession();
     setUserInfo(undefined);
     navigate("/auth", { replace: true });
 

@@ -434,7 +434,7 @@ const setupSocket = (server) => {
 
     try {
       const cookies = parseCookieHeader(socket.handshake.headers?.cookie || "");
-      const token = cookies[SESSION_COOKIE_NAME];
+      const token = cookies[SESSION_COOKIE_NAME] || socket.handshake.auth?.token;
       const csrfCookie = cookies[CSRF_COOKIE_NAME];
       const csrfToken = socket.handshake.auth?.csrfToken || socket.handshake.headers?.["x-csrf-token"];
 

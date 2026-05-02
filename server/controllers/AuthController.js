@@ -352,7 +352,14 @@ export const syncClerkSession = async (req, res) => {
       metadata: { sessionId },
     });
 
-    return res.status(200).json({ user: buildUserPayload(user) });
+    return res.status(200).json({
+      user: buildUserPayload(user),
+      session: {
+        token,
+        csrfToken,
+        sessionId,
+      },
+    });
   } catch (error) {
     console.error("Error syncing Clerk session:", error.message);
     recordAuthFailure({ req, identity: attemptedIdentity });

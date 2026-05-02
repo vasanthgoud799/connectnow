@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useAppStore } from "@/store";
 import { HOST } from "@/utils/constants";
+import { getStoredAppSessionToken } from "@/lib/api-client";
 import {
   connectWithWebSocket,
   disconnectWebSocket,
@@ -42,6 +43,7 @@ const SocketProvider = ({ children }) => {
         reconnectionDelayMax: 1500,
         auth: {
           csrfToken: decodeURIComponent(getCookieValue("csrf_token")),
+          token: getStoredAppSessionToken(),
         },
       });
 
