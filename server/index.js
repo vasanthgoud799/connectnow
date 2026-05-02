@@ -87,6 +87,15 @@ app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "2mb" }));
 app.use(express.urlencoded({ extended: false, limit: process.env.FORM_BODY_LIMIT || "1mb" }));
 app.use(rejectNoSqlInjection);
 
+app.get("/api/health", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "connectnow-api",
+    environment: runtimeConfig.runtimeEnvironment,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactsRoutes);
 app.use("/api/groups", groupsRoutes);

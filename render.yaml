@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: connectnow-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: production
+      - key: PORT
+        value: 8747
+      - key: ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_KEY
+        sync: false
+      - key: JWT_KEY_ID
+        sync: false
+      - key: JWT_KEY_PREVIOUS
+        sync: false
+      - key: JWT_ISSUER
+        value: connectnow-api
+      - key: JWT_AUDIENCE
+        value: connectnow-web
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: chat-media
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CAPTCHA_ENFORCE_AUTH
+        value: "false"
+      - key: CAPTCHA_PROVIDER
+        value: turnstile
+      - key: CAPTCHA_SECRET_KEY
+        sync: false
