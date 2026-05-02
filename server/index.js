@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import mongoose from "mongoose";
+
 import authRoutes from "./routes/AuthRoutes.js";
 import contactsRoutes from "./routes/ContactsRoutes.js";
 import setupSocket from "./socket.js";
@@ -21,7 +22,9 @@ import subscriptionRoutes from "./routes/SubscriptionRoutes.js";
 import mediaRoutes from "./routes/MediaRoutes.js";
 import e2eeRoutes from "./routes/E2EERoutes.js";
 import securityRoutes from "./routes/SecurityRoutes.js";
+
 import { initializeScheduledMessaging } from "./services/ScheduledMessageService.js";
+
 import {
   attachRequestContext,
   errorHandler,
@@ -31,6 +34,7 @@ import {
   securityHeaders,
   validateHttpMethod,
 } from "./middlewares/SecurityMiddleware.js";
+
 import { validateEnv } from "./config/env.js";
 
 dotenv.config();
@@ -38,9 +42,10 @@ const runtimeConfig = validateEnv();
 
 const app = express();
 const port = process.env.PORT || 3001;
+
 const databaseUrl = (process.env.DATABASE_URL || "").replace(
   "mongodb://localhost:",
-  "mongodb://127.0.0.1:"
+  "mongodb://127.0.0.1:",
 );
 
 const allowedOrigins = runtimeConfig.allowedOrigins;
@@ -48,6 +53,7 @@ const allowedOrigins = runtimeConfig.allowedOrigins;
 app.set("trust proxy", 1);
 app.set("json escape", true);
 
+/* -------------------- CORS -------------------- */
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -57,8 +63,8 @@ app.use(
 
       return callback(new Error("Origin not allowed by CORS."));
     },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    credentials: true, // Enable cookies
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
     allowedHeaders: [
       "Content-Type",
       "Authorization",
@@ -70,23 +76,52 @@ app.use(
       "X-Device-Label",
       "X-Captcha-Token",
     ],
-  })
+  }),
 );
+
+/* -------------------- Security -------------------- */
 app.use(securityHeaders);
 app.use(validateHttpMethod);
 app.use(attachRequestContext);
+
+/* ==================================================
+   FIX: AUTH ROUTES BEFORE RATE LIMITER
+================================================== */
+app.use("/api/auth", authRoutes);
+
+/* Apply limiter AFTER auth */
 app.use(globalRateLimiter);
+
+/* -------------------- Static / Raw -------------------- */
 app.use("/uploads/files", express.static("uploads/files"));
+
 app.use(
   "/api/subscription/webhook",
-  express.raw({ type: "application/json", limit: "2mb" })
+  express.raw({
+    type: "application/json",
+    limit: "2mb",
+  }),
 );
 
+/* -------------------- Parsers -------------------- */
 app.use(cookieParser());
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "2mb" }));
-app.use(express.urlencoded({ extended: false, limit: process.env.FORM_BODY_LIMIT || "1mb" }));
+
+app.use(
+  express.json({
+    limit: process.env.JSON_BODY_LIMIT || "2mb",
+  }),
+);
+
+app.use(
+  express.urlencoded({
+    extended: false,
+    limit: process.env.FORM_BODY_LIMIT || "1mb",
+  }),
+);
+
 app.use(rejectNoSqlInjection);
 
+/* -------------------- Health -------------------- */
 app.get("/api/health", (_req, res) => {
   res.status(200).json({
     ok: true,
@@ -96,7 +131,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-app.use("/api/auth", authRoutes);
+/* -------------------- Other Routes -------------------- */
 app.use("/api/contacts", contactsRoutes);
 app.use("/api/groups", groupsRoutes);
 app.use("/api/messages", messagesRoutes);
@@ -112,13 +147,17 @@ app.use("/api/e2ee", e2eeRoutes);
 app.use("/api/security", securityRoutes);
 app.use("/api/details", detailRoutes);
 app.use("/api/calls", callsRoutes);
+
+/* -------------------- Errors -------------------- */
 app.use(notFoundHandler);
 app.use(errorHandler);
 
+/* -------------------- Mongo Fix -------------------- */
 const cleanupLegacyUserIndexes = async () => {
   try {
     const usersCollection = mongoose.connection.collection("users");
     const indexes = await usersCollection.indexes();
+
     const passwordIndex = indexes.find((index) => index.name === "password_1");
 
     if (passwordIndex?.unique) {
@@ -130,17 +169,21 @@ const cleanupLegacyUserIndexes = async () => {
   }
 };
 
+/* -------------------- Start Server -------------------- */
 const startServer = async () => {
   try {
     await mongoose.connect(databaseUrl);
+
     console.log("Database connection successful");
+
     await cleanupLegacyUserIndexes();
 
     const server = app.listen(port, () => {
-      console.log(`Server is running at http://localhost:${port}`);
+      console.log(`Server is running on port ${port}`);
     });
 
     setupSocket(server);
+
     await initializeScheduledMessaging();
   } catch (err) {
     console.error("Database connection failed:", err.message);
