@@ -29,13 +29,16 @@ function Profile() {
     String(provider).toLowerCase().includes("google")
   );
   const passwordEnabled = Boolean(clerkUser?.passwordEnabled);
+  const normalizedFirstName = firstName.trim();
+  const normalizedLastName = lastName.trim();
+  const normalizedAbout = about.trim();
 
   const validateProfile = () => {
-    if (!firstName) {
+    if (!normalizedFirstName) {
       toast.error("First Name is required.");
       return false;
     }
-    if (!lastName) {
+    if (!normalizedLastName) {
       toast.error("Last Name is required.");
       return false;
     }
@@ -75,7 +78,14 @@ function Profile() {
         const imageUpload = imageFile ? await uploadProfileImage(imageFile) : null;
         const response = await apiClient.post(
           UPDATE_PROFILE_ROUTE,
-          { firstName, lastName, image, imageUpload, about, birthday },
+          {
+            firstName: normalizedFirstName,
+            lastName: normalizedLastName,
+            image,
+            imageUpload,
+            about: normalizedAbout,
+            birthday,
+          },
           { withCredentials: true }
         );
 
@@ -90,7 +100,7 @@ function Profile() {
           "Error updating profile:",
           error.response?.data?.message || error.message
         );
-        toast.error("Failed to update profile");
+        toast.error(error.response?.data?.message || "Failed to update profile");
       }
     }
   };

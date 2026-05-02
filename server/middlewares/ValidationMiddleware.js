@@ -38,6 +38,19 @@ const asSafeText = (value, { min = 0, max = 5000, allowEmpty = false } = {}) => 
   return normalized;
 };
 
+const asNamedSafeText = (
+  fieldName,
+  value,
+  { min = 0, max = 5000, allowEmpty = false } = {}
+) => {
+  const normalized = cleanString(value, max);
+  if (!allowEmpty && normalized.length < min) {
+    throw new Error(`${fieldName} is required.`);
+  }
+
+  return normalized;
+};
+
 const asEnum = (value, allowedValues, fallback = null) => {
   const normalized = cleanString(value, 80).toLowerCase();
   if (!normalized) return fallback;
@@ -72,8 +85,8 @@ export const validateClerkSync = validator((req) => ({
 
 export const validateProfileUpdate = validator((req) => ({
   profile: {
-    firstName: asSafeText(req.body?.firstName, { min: 1, max: 80 }),
-    lastName: asSafeText(req.body?.lastName, { min: 1, max: 80 }),
+    firstName: asNamedSafeText("First name", req.body?.firstName, { min: 1, max: 80 }),
+    lastName: asNamedSafeText("Last name", req.body?.lastName, { min: 1, max: 80 }),
     about: asSafeText(req.body?.about, { max: 500, allowEmpty: true }),
     birthday: req.body?.birthday ? new Date(req.body.birthday) : null,
     image: cleanString(req.body?.image, 1000),

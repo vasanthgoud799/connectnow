@@ -9,6 +9,7 @@ import {
 } from "@/utils/wssConnection/wssConnection";
 
 const SocketContext = createContext(null);
+const isDevelopment = import.meta.env.DEV;
 
 const getCookieValue = (name) => {
   if (typeof document === "undefined") return "";
@@ -31,7 +32,9 @@ const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (userId && userInfo) {
-      console.log("SocketProvider establishing socket", { userId });
+      if (isDevelopment) {
+        console.debug("SocketProvider establishing socket", { userId });
+      }
       const nextSocket = io(HOST, {
         withCredentials: true,
         transports: ["websocket", "polling"],
@@ -50,20 +53,26 @@ const SocketProvider = ({ children }) => {
       setSocket(nextSocket);
 
       nextSocket.on("connect", () => {
-        console.log("Connected to socket server");
+        if (isDevelopment) {
+          console.debug("Connected to socket server");
+        }
       });
 
       connectWithWebSocket(nextSocket, userInfo);
 
       return () => {
-        console.log("SocketProvider cleanup", {
-          userId,
-          currentSocketId: nextSocket.id,
-        });
+        if (isDevelopment) {
+          console.debug("SocketProvider cleanup", {
+            userId,
+            currentSocketId: nextSocket.id,
+          });
+        }
         disconnectWebSocket();
         nextSocket.disconnect();
         setSocket(null);
-        console.log("Disconnected from socket server");
+        if (isDevelopment) {
+          console.debug("Disconnected from socket server");
+        }
       };
     }
 
@@ -72,7 +81,9 @@ const SocketProvider = ({ children }) => {
         disconnectWebSocket();
         socket.disconnect();
         setSocket(null);
-          console.log("Disconnected from socket server");
+        if (isDevelopment) {
+          console.debug("Disconnected from socket server");
+        }
       }
     }
   }, [userId]);

@@ -8,6 +8,7 @@ import { ensureUserE2EEIdentity } from "../../crypto/e2eeService";
 const broadcastEventTypes = {
   ACTIVE_USERS: "ACTIVE_USERS",
 };
+const isDevelopment = import.meta.env.DEV;
 
 let socket = null;
 let connectedUserId = null;
@@ -41,8 +42,10 @@ const handleBroadcastEvents = (data) => {
 
 const attachSocketListeners = (nextSocket) => {
   const handleConnect = () => {
-    console.log("Successfully connected to WebSocket server");
-    console.log("Socket ID:", nextSocket.id);
+    if (isDevelopment) {
+      console.debug("Successfully connected to WebSocket server");
+      console.debug("Socket ID:", nextSocket.id);
+    }
     nextSocket.emit("get-active-users");
 
     if (pendingUserRegistration) {
@@ -51,7 +54,9 @@ const attachSocketListeners = (nextSocket) => {
   };
 
   const handleBroadcast = (data) => {
-    console.log(data);
+    if (isDevelopment) {
+      console.debug(data);
+    }
     handleBroadcastEvents(data);
   };
 
@@ -80,7 +85,9 @@ const attachSocketListeners = (nextSocket) => {
   };
 
   const handleDisconnect = (reason) => {
-    console.log("Disconnected from WebSocket server", { reason });
+    if (isDevelopment) {
+      console.debug("Disconnected from WebSocket server", { reason });
+    }
   };
 
   const handleGroupCallInvitation = (data) => {
