@@ -2,7 +2,7 @@ import * as callActions from "../actions/callActions";
 
 const initState = {
   localStream: null,
-  callState: callActions.callStates.CALL_UNAVAILABLE,
+  callState: callActions.callStates.CALL_IDLE,
   callingDialogVisible: false,
   callerUsername: "",
   callerImage: "",
@@ -85,6 +85,8 @@ const reducer = (state = initState, action) => {
     case callActions.CALL_RESET_CALL_STATE:
       return {
         ...state,
+        callState: callActions.callStates.CALL_IDLE,
+        localStream: state.localStream,
         remoteStream: null,
         screenSharingActive: false,
         callerUsername: "",
@@ -93,6 +95,10 @@ const reducer = (state = initState, action) => {
         localMicrophoneEnabled: true,
         localCameraEnabled: true,
         callingDialogVisible: false,
+        callRejected: {
+          rejected: false,
+          reason: "",
+        },
       };
     case callActions.CALL_SET_CHAT_MESSAGE:
       return {

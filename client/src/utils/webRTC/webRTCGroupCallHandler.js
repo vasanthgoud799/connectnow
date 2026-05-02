@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { store } from "../../store/store";
 import {
   callStates,
+  isDirectCallBusy,
   setCallRejected,
   setGroupCallConnecting,
   clearGroupCallState,
@@ -181,7 +182,7 @@ const cleanupGroupCall = ({ preserveLocalStream = true } = {}) => {
 
   store.dispatch(clearGroupCallState());
   store.dispatch(setGroupCallConnecting(false));
-  store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+  store.dispatch(setCallState(callStates.CALL_IDLE));
 };
 
 export const startGroupCall = async ({
@@ -198,7 +199,7 @@ export const startGroupCall = async ({
   }
 
   store.dispatch(setGroupCallConnecting(true));
-  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+  store.dispatch(setCallState(callStates.CALL_CALLING));
 
   wss.sendGroupCallStart(
     {
@@ -216,7 +217,7 @@ export const startGroupCall = async ({
             reason: ack?.error || "Unable to start group call.",
           })
         );
-        store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+        store.dispatch(setCallState(callStates.CALL_IDLE));
         return;
       }
 
@@ -250,7 +251,7 @@ export const startGroupCall = async ({
       );
       store.dispatch(setGroupCallParticipants(participants));
       store.dispatch(setGroupCallConnecting(false));
-      store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+      store.dispatch(setCallState(callStates.CALL_CONNECTED));
     }
   );
 };
@@ -260,8 +261,7 @@ export const handleIncomingGroupCall = (data) => {
   if (
     currentCallState.groupCallIncoming ||
     currentCallState.groupCallSession ||
-    currentCallState.callState === callStates.CALL_IN_PROGRESS ||
-    currentCallState.callState === callStates.CALL_REQUESTED
+    isDirectCallBusy(currentCallState.callState)
   ) {
     wss.sendGroupCallReject({ sessionId: data.sessionId });
     return;
@@ -277,7 +277,7 @@ export const handleIncomingGroupCall = (data) => {
   store.dispatch(setCallerUsername(data.callerUsername || "Group member"));
   store.dispatch(setCallerImage(data.callerImage || null));
   store.dispatch(setCallType(data.callType || "audio"));
-  store.dispatch(setCallState(callStates.CALL_REQUESTED));
+  store.dispatch(setCallState(callStates.CALL_RINGING));
   store.dispatch(
     setGroupCallIncoming({
       sessionId: data.sessionId,
@@ -305,7 +305,7 @@ export const acceptIncomingGroupCallRequest = async () => {
     store.dispatch(setGroupCallIncoming(null));
     store.dispatch(setGroupCallConnecting(false));
     store.dispatch(clearGroupCallState());
-    store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+    store.dispatch(setCallState(callStates.CALL_IDLE));
     return;
   }
 
@@ -324,13 +324,13 @@ export const acceptIncomingGroupCallRequest = async () => {
     })
   );
   store.dispatch(setGroupCallConnecting(true));
-  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+  store.dispatch(setCallState(callStates.CALL_CONNECTED));
   wss.sendGroupCallAccept({ sessionId: incoming.sessionId }, (ack) => {
     if (!ack?.ok) {
       toast.error(ack?.error || "Unable to join group call.");
       cleanupGroupCall();
       store.dispatch(setGroupCallConnecting(false));
-      store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+      store.dispatch(setCallState(callStates.CALL_IDLE));
     }
   });
 };
@@ -343,7 +343,7 @@ export const rejectIncomingGroupCallRequest = () => {
   store.dispatch(setGroupCallIncoming(null));
   store.dispatch(clearGroupCallState());
   store.dispatch(setGroupCallConnecting(false));
-  store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+  store.dispatch(setCallState(callStates.CALL_IDLE));
 };
 
 export const handleGroupCallJoined = (data) => {
@@ -372,10 +372,10 @@ export const handleGroupCallJoined = (data) => {
           String(participant.userId) === localUserId ? localStream : null
         )
       )
-    )
+  )
   );
   store.dispatch(setGroupCallConnecting(false));
-  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+  store.dispatch(setCallState(callStates.CALL_CONNECTED));
 };
 
 export const handleGroupCallParticipants = (data) => {

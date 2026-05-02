@@ -41,6 +41,7 @@ const callContext = {
   dataChannel: null,
   pendingCandidates: [],
   screenSharingStream: null,
+  isCaller: false,
 };
 
 const getMediaConstraints = (callType) => ({
@@ -143,8 +144,12 @@ const closePeerConnection = () => {
 };
 
 const createDataChannelHandlers = (dataChannel) => {
+  if (!dataChannel) return;
+
   dataChannel.onopen = () => {
-    console.log("chat data channel opened");
+    if (import.meta.env.DEV) {
+      console.debug("chat data channel opened");
+    }
   };
 
   dataChannel.onmessage = (event) => {
@@ -193,7 +198,7 @@ const serializeIceCandidate = (candidate) => {
   };
 };
 
-const createPeerConnection = () => {
+const createPeerConnection = ({ createOutboundDataChannel = false } = {}) => {
   const { localStream } = getCallState();
   if (!localStream) return null;
 
@@ -216,8 +221,10 @@ const createPeerConnection = () => {
     createDataChannelHandlers(callContext.dataChannel);
   };
 
-  callContext.dataChannel = peerConnection.createDataChannel("chat");
-  createDataChannelHandlers(callContext.dataChannel);
+  if (createOutboundDataChannel) {
+    callContext.dataChannel = peerConnection.createDataChannel("chat");
+    createDataChannelHandlers(callContext.dataChannel);
+  }
 
   peerConnection.onicecandidate = (event) => {
     if (!event.candidate || !callContext.sessionId) return;
@@ -257,10 +264,11 @@ export const getLocalStream = async (callType = "video", options = {}) => {
       store.dispatch(setCallType(callType));
       store.dispatch(setLocalCameraEnabled(callType === "video"));
       store.dispatch(setLocalMicrophoneEnabled(true));
-      store.dispatch(setCallState(callStates.CALL_AVAILABLE));
 
       if (!options.skipPeerConnection && !callContext.peerConnection) {
-        createPeerConnection();
+        createPeerConnection({
+          createOutboundDataChannel: options.createOutboundDataChannel,
+        });
       }
 
       return true;
@@ -280,15 +288,15 @@ export const getLocalStream = async (callType = "video", options = {}) => {
     store.dispatch(setCallType(callType));
     store.dispatch(setLocalCameraEnabled(callType === "video"));
     store.dispatch(setLocalMicrophoneEnabled(true));
-    store.dispatch(setCallState(callStates.CALL_AVAILABLE));
 
     if (!options.skipPeerConnection) {
-      createPeerConnection();
+      createPeerConnection({
+        createOutboundDataChannel: options.createOutboundDataChannel,
+      });
     }
     return true;
   } catch (error) {
     console.error("Error accessing local stream:", error);
-    store.dispatch(setCallState(callStates.CALL_UNAVAILABLE));
     return false;
   }
 };
@@ -297,16 +305,31 @@ export const checkIfCallIsPossible = () => {
   const { callState: currentState, groupCallIncoming, groupCallSession } =
     getCallState();
   return (
-    currentState !== callStates.CALL_IN_PROGRESS &&
-    currentState !== callStates.CALL_REQUESTED &&
+    ![
+      callStates.CALL_CALLING,
+      callStates.CALL_RINGING,
+      callStates.CALL_CONNECTED,
+    ].includes(currentState) &&
     !groupCallIncoming &&
     !groupCallSession
   );
 };
 
-export const callToOtherUser = (calleeDetails, callType = "video") => {
+export const callToOtherUser = async (calleeDetails, callType = "video") => {
   if (!calleeDetails?.userId) {
     setCallRejectedState("Unable to resolve this contact for calling.");
+    return;
+  }
+
+  const isReady = await getLocalStream(callType, {
+    createOutboundDataChannel: true,
+  });
+
+  if (!isReady) {
+    setCallRejectedState(
+      `Unable to access microphone${callType === "video" ? " or camera" : ""} for this call.`
+    );
+    store.dispatch(setCallState(callStates.CALL_IDLE));
     return;
   }
 
@@ -314,6 +337,7 @@ export const callToOtherUser = (calleeDetails, callType = "video") => {
   callContext.remoteSocketId = calleeDetails.socketId || null;
   callContext.callType = callType;
   callContext.sessionId = null;
+  callContext.isCaller = true;
 
   store.dispatch(
     setCallerUsername(
@@ -327,8 +351,15 @@ export const callToOtherUser = (calleeDetails, callType = "video") => {
   );
   store.dispatch(setCallerImage(normalizeImage(calleeDetails)));
   store.dispatch(setCallType(callType));
-  store.dispatch(setCallingDialogVisible(true));
-  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+  store.dispatch(
+    setCallRejected({
+      rejected: false,
+      reason: "",
+    })
+  );
+  store.dispatch(setCallingDialogVisible(false));
+  store.dispatch(setRemoteStream(null));
+  store.dispatch(setCallState(callStates.CALL_CALLING));
 
   wss.sendPreOffer({
     callee: {
@@ -351,12 +382,14 @@ export const handlePreOffer = (data) => {
     callContext.remoteUserId = data.callerUserId || null;
     callContext.remoteSocketId = data.callerSocketId || null;
     callContext.callType = data.callType || "video";
+    callContext.isCaller = false;
 
     store.dispatch(setCallerUsername(normalizeDisplayName(data.callerUsername)));
     store.dispatch(setCallerImage(normalizeImage(data.callerImage)));
     store.dispatch(setCallType(callContext.callType));
     store.dispatch(setLocalCameraEnabled(callContext.callType === "video"));
-    store.dispatch(setCallState(callStates.CALL_REQUESTED));
+    store.dispatch(setRemoteStream(null));
+    store.dispatch(setCallState(callStates.CALL_RINGING));
     return;
   }
 
@@ -386,7 +419,7 @@ export const acceptIncomingCallRequest = async () => {
     sessionId: callContext.sessionId,
   });
 
-  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+  store.dispatch(setCallState(callStates.CALL_CONNECTED));
 };
 
 export const rejectIncomingCallRequest = () => {
@@ -421,19 +454,6 @@ export const handlePreOfferAnswer = async (data) => {
   }
 
   if (data.answer === preOfferAnswers.CALL_ACCEPTED) {
-    const isReady = await getLocalStream(callContext.callType);
-
-    if (!isReady) {
-      setCallRejectedState(
-        `Unable to access microphone${callContext.callType === "video" ? " or camera" : ""} for this call.`
-      );
-      wss.sendUserHangedUp({
-        sessionId: callContext.sessionId,
-      });
-      resetCallData();
-      return;
-    }
-
     await sendOffer();
     return;
   }
@@ -454,7 +474,9 @@ export const handleOffer = async (data) => {
     return;
   }
 
-  const peerConnection = callContext.peerConnection || createPeerConnection();
+  const peerConnection =
+    callContext.peerConnection ||
+    createPeerConnection({ createOutboundDataChannel: false });
   if (!peerConnection) return;
 
   await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -467,6 +489,7 @@ export const handleOffer = async (data) => {
   });
 
   await flushPendingCandidates();
+  store.dispatch(setCallState(callStates.CALL_CONNECTED));
 };
 
 export const handleAnswer = async (data) => {
@@ -479,6 +502,7 @@ export const handleAnswer = async (data) => {
     new RTCSessionDescription(data.answer)
   );
   await flushPendingCandidates();
+  store.dispatch(setCallState(callStates.CALL_CONNECTED));
 };
 
 export const handleCandidate = async (data) => {
@@ -580,15 +604,12 @@ export const resetCallData = () => {
   callContext.remoteSocketId = null;
   callContext.callType = "video";
   callContext.pendingCandidates = [];
+  callContext.isCaller = false;
 
-  store.dispatch(
-    setCallState(
-      getCallState().localStream
-        ? callStates.CALL_AVAILABLE
-        : callStates.CALL_UNAVAILABLE
-    )
-  );
+  store.dispatch(setCallState(callStates.CALL_IDLE));
   store.dispatch(setCallType("video"));
+  store.dispatch(setCallingDialogVisible(false));
+  store.dispatch(setRemoteStream(null));
 };
 
 export const sendMessageUsingDataChannel = (message) => {

@@ -7,9 +7,9 @@ import LocalVideoView from "../LocalVideoView/LocalVideoView";
 import RemoteVideoView from "../RemoteVideoView/RemoteVideoView";
 import CallRejectedDialog from "../CallRejectedDialog/CallRejectedDialog";
 import IncomingCallDialog from "../IncomingCallDialog/IncomingCallDialog";
-import CallingDialog from "../CallingDialog/CallingDialog";
 import {
   callStates,
+  isDirectCallVisible,
   setCallRejected,
   setLocalCameraEnabled,
   setLocalMicrophoneEnabled,
@@ -330,7 +330,6 @@ const DirectCall = (props) => {
     callState,
     callerUsername,
     callerImage,
-    callingDialogVisible,
     callRejected,
     hideCallRejectedDialog,
     setDirectCallMessage,
@@ -349,6 +348,10 @@ const DirectCall = (props) => {
   const isGroupCallActive = Boolean(groupCallSession);
   const isVideoCall = (groupCallSession?.callType || callType) === "video";
   const isRemoteConnected = Boolean(remoteStream);
+  const isOutgoingCall = callState === callStates.CALL_CALLING;
+  const isIncomingCall = callState === callStates.CALL_RINGING;
+  const isDirectCallConnected = callState === callStates.CALL_CONNECTED;
+  const isDirectCallScreenVisible = isDirectCallVisible(callState);
   const otherParticipants = useMemo(
     () => (groupCallParticipants || []).filter((participant) => participant.stream || participant.userId !== groupCallSession?.hostId),
     [groupCallParticipants, groupCallSession?.hostId]
@@ -376,25 +379,23 @@ const DirectCall = (props) => {
   }, []);
 
   useEffect(() => {
-    if (callState === callStates.CALL_REQUESTED || isGroupCallIncoming) {
+    if (isIncomingCall || isGroupCallIncoming) {
       incomingToneRef.current?.start();
     } else {
       incomingToneRef.current?.stop();
     }
-  }, [callState, isGroupCallIncoming]);
+  }, [isIncomingCall, isGroupCallIncoming]);
 
   useEffect(() => {
-    if ((callingDialogVisible && !isRemoteConnected) || groupCallConnecting) {
+    if ((isOutgoingCall && !isRemoteConnected) || groupCallConnecting) {
       outgoingToneRef.current?.start();
     } else {
       outgoingToneRef.current?.stop();
     }
-  }, [callingDialogVisible, groupCallConnecting, isRemoteConnected]);
+  }, [groupCallConnecting, isOutgoingCall, isRemoteConnected]);
 
   if (
-    callState !== callStates.CALL_IN_PROGRESS &&
-    callState !== callStates.CALL_REQUESTED &&
-    !callingDialogVisible &&
+    !isDirectCallScreenVisible &&
     !callRejected.rejected &&
     !isGroupCallIncoming &&
     !isGroupCallActive
@@ -413,7 +414,7 @@ const DirectCall = (props) => {
 
       {isGroupCallIncoming && <GroupIncomingCallDialog incomingCall={groupCallIncoming} isMobile={isMobile} />}
 
-      {!isGroupCallIncoming && callState === callStates.CALL_REQUESTED && (
+      {!isGroupCallIncoming && isIncomingCall && (
         <IncomingCallDialog
           callerUsername={callerUsername}
           callerImage={callerImage}
@@ -426,14 +427,6 @@ const DirectCall = (props) => {
           session={groupCallSession}
           participantCount={groupCallParticipants?.length || 1}
           isMobile={isMobile}
-        />
-      )}
-
-      {!groupCallConnecting && callingDialogVisible && (
-        <CallingDialog
-          callType={callType}
-          callerUsername={callerUsername}
-          callerImage={callerImage}
         />
       )}
 
@@ -543,7 +536,7 @@ const DirectCall = (props) => {
         </div>
       )}
 
-      {!isGroupCallActive && callState === callStates.CALL_IN_PROGRESS && !callingDialogVisible && (
+      {!isGroupCallActive && isDirectCallScreenVisible && !isIncomingCall && (
         <div className="flex h-full w-full max-w-full flex-col overflow-hidden">
           <div className={`flex items-center justify-between border-b border-white/10 text-white ${isMobile ? "px-4 py-4" : "px-8 py-5"}`}>
             <div className="flex items-center gap-4">
@@ -557,25 +550,33 @@ const DirectCall = (props) => {
                 <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
                   {isVideoCall ? <Video className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
                   <span>
-                    {isRemoteConnected
+                    {isDirectCallConnected && isRemoteConnected
                       ? isVideoCall
                         ? "Video call in progress"
                         : "Audio call in progress"
-                      : isVideoCall
-                        ? "Connecting video call"
-                        : "Connecting audio call"}
+                      : isOutgoingCall
+                        ? isVideoCall
+                          ? "Calling with video preview"
+                          : "Calling with audio preview"
+                        : isVideoCall
+                          ? "Connecting video call"
+                          : "Connecting audio call"}
                   </span>
                 </div>
               </div>
             </div>
             <div
               className={`rounded-full px-4 py-2 text-sm ${
-                isRemoteConnected
+                isDirectCallConnected && isRemoteConnected
                   ? "bg-emerald-400/10 text-emerald-300"
                   : "bg-white/5 text-slate-300"
               }`}
             >
-              {isRemoteConnected ? "Connected" : "Ringing..."}
+              {isDirectCallConnected && isRemoteConnected
+                ? "Connected"
+                : isOutgoingCall
+                  ? "Calling..."
+                  : "Connecting..."}
             </div>
           </div>
 

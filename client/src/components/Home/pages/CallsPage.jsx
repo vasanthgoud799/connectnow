@@ -19,7 +19,7 @@ import {
   LIST_CONTACTS_ROUTE,
 } from "@/utils/constants";
 import { useAppStore } from "@/store";
-import { callStates } from "@/store/actions/callActions";
+import { isDirectCallBusy } from "@/store/actions/callActions";
 import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
 
 function formatCallDate(value) {
@@ -280,10 +280,7 @@ function CallsPage({ activeUsers = [], callState }) {
   }, [calls, searchText, userInfo?.id]);
 
   const startDirectCall = async (contact, type, onlineMatch) => {
-    if (
-      callState === callStates.CALL_IN_PROGRESS ||
-      callState === callStates.CALL_REQUESTED
-    ) {
+    if (isDirectCallBusy(callState)) {
       toast.error("Finish the current call before starting another one.");
       return;
     }

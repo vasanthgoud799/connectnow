@@ -32,7 +32,7 @@ import NotificationDrawer from "./NotificationDrawer";
 import { apiClient } from "@/lib/api-client";
 import { clearPersistedAppSession } from "@/lib/api-client";
 import { useAppStore } from "@/store";
-import { callStates } from "@/store/actions/callActions";
+import { callStates, isDirectCallVisible } from "@/store/actions/callActions";
 import {
   ACCEPT_FRIEND_REQUEST_ROUTE,
   ACCEPT_GROUP_INVITE_ROUTE,
@@ -596,7 +596,7 @@ function Home({ activeUsers = [], callState }) {
       )}
       <DirectCall />
 
-      {callState !== callStates.CALL_IN_PROGRESS && (
+      {!isDirectCallVisible(callState) && (
         <div className="relative flex h-[100dvh] w-full max-w-full overflow-hidden">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <motion.div

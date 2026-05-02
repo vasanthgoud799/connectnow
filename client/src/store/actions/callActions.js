@@ -1,9 +1,25 @@
 export const callStates = {
-  CALL_UNAVAILABLE: "CALL_UNAVAILABLE",
-  CALL_AVAILABLE: "CALL_AVAILABLE",
-  CALL_REQUESTED: "CALL_REQUESTED",
-  CALL_IN_PROGRESS: "CALL_IN_PROGRESS",
+  CALL_IDLE: "idle",
+  CALL_CALLING: "calling",
+  CALL_RINGING: "ringing",
+  CALL_CONNECTED: "connected",
+  CALL_ENDED: "ended",
+  CALL_UNAVAILABLE: "unavailable",
 };
+
+export const isDirectCallBusy = (callState) =>
+  [
+    callStates.CALL_CALLING,
+    callStates.CALL_RINGING,
+    callStates.CALL_CONNECTED,
+  ].includes(callState);
+
+export const isDirectCallVisible = (callState) =>
+  [
+    callStates.CALL_CALLING,
+    callStates.CALL_RINGING,
+    callStates.CALL_CONNECTED,
+  ].includes(callState);
 
 export const CALL_SET_LOCAL_STREAM = "CALL.SET_LOCAL_STREAM";
 export const CALL_SET_CALL_STATE = "CALL.SET_CALL_STATE";

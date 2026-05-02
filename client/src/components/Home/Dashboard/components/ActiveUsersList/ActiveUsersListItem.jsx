@@ -1,14 +1,13 @@
 import React from "react";
 
 import { callToOtherUser } from '@utils/webRTC/webRTCHandler';
-import { callStates } from "@store/actions/callActions";
+import { isDirectCallBusy } from "@store/actions/callActions";
 
 const ActiveUsersListItem = (props) => {
   const { activeUser, callState } = props;
-  console.log(activeUser,callState)
 
   const handleListItemPressed = () => {
-    if (callState === callStates.CALL_AVAILABLE) {
+    if (!isDirectCallBusy(callState)) {
       callToOtherUser(activeUser);
     }
   };

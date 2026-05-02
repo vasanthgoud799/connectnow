@@ -65,7 +65,7 @@ import {
   UPCOMING_BIRTHDAYS_ROUTE,
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants.js";
-import { callStates } from "@/store/actions/callActions";
+import { isDirectCallBusy } from "@/store/actions/callActions";
 import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
 import { startGroupCall } from "@/utils/webRTC/webRTCGroupCallHandler";
 import { requestRemoteE2eeInit } from "@/utils/wssConnection/wssConnection";
@@ -2081,10 +2081,7 @@ function Chat({
   const initiateCall = (callType = "video") => {
     const targetUserId = selectedChatId || activeCallUser?.userId;
 
-    if (
-      callState === callStates.CALL_IN_PROGRESS ||
-      callState === callStates.CALL_REQUESTED
-    ) {
+    if (isDirectCallBusy(callState)) {
       toast.error("Finish the current call before starting another one.");
       return;
     }
@@ -2119,10 +2116,7 @@ function Chat({
   };
 
   const startGroupMemberCall = async (participantIds = []) => {
-    if (
-      callState === callStates.CALL_IN_PROGRESS ||
-      callState === callStates.CALL_REQUESTED
-    ) {
+    if (isDirectCallBusy(callState)) {
       toast.error("Finish the current call before starting another one.");
       return;
     }

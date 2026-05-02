@@ -33,7 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
-import { callStates } from "@/store/actions/callActions";
+import { isDirectCallBusy } from "@/store/actions/callActions";
 import { connect } from "react-redux";
 import { decryptMediaAttachmentToObjectUrl } from "@/crypto/e2eeService";
 
@@ -569,10 +569,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
       );
     });
 
-    if (
-      callState === callStates.CALL_IN_PROGRESS ||
-      callState === callStates.CALL_REQUESTED
-    ) {
+    if (isDirectCallBusy(callState)) {
       toast.error("Finish the current call before starting another one.");
       return;
     }
