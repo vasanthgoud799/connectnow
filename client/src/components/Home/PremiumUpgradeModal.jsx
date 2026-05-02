@@ -1,41 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { Crown, Lock, Sparkles, Wand2, X } from "lucide-react";
+import { Clock3, Crown, Lock, Sparkles, Wand2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiClient } from "@/lib/api-client";
-import { useAppStore } from "@/store";
-import {
-  SUBSCRIPTION_CREATE_ORDER_ROUTE,
-  SUBSCRIPTION_VERIFY_PAYMENT_ROUTE,
-} from "@/utils/constants";
-
-const loadRazorpayScript = () =>
-  new Promise((resolve, reject) => {
-    if (window.Razorpay) {
-      resolve(true);
-      return;
-    }
-
-    const existingScript = document.querySelector('script[data-razorpay="true"]');
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(true), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load Razorpay.")), {
-        once: true,
-      });
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.dataset.razorpay = "true";
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error("Failed to load Razorpay."));
-    document.body.appendChild(script);
-  });
-
 function PremiumUpgradeModal({ isOpen, onClose }) {
-  const { userInfo, setUserInfo } = useAppStore();
   const [loading, setLoading] = useState(false);
 
   const features = useMemo(
@@ -54,64 +21,10 @@ function PremiumUpgradeModal({ isOpen, onClose }) {
   const handleUpgrade = async () => {
     try {
       setLoading(true);
-      const orderResponse = await apiClient.post(
-        SUBSCRIPTION_CREATE_ORDER_ROUTE,
-        {},
-        { withCredentials: true }
-      );
-
-      await loadRazorpayScript();
-
-      const { order, keyId, validityDays } = orderResponse.data;
-
-      const razorpay = new window.Razorpay({
-        key: keyId,
-        order_id: order.id,
-        name: "ConnectNow Premium",
-        description: `${validityDays} days of AI messaging access`,
-        image: userInfo?.image || undefined,
-        prefill: {
-          name: [userInfo?.firstName, userInfo?.lastName].filter(Boolean).join(" "),
-          email: userInfo?.email,
-        },
-        theme: {
-          color: "#7c5cff",
-        },
-        handler: async (paymentResponse) => {
-          const verifyResponse = await apiClient.post(
-            SUBSCRIPTION_VERIFY_PAYMENT_ROUTE,
-            paymentResponse,
-            { withCredentials: true }
-          );
-
-          const subscription = verifyResponse.data.subscription;
-          setUserInfo({
-            ...userInfo,
-            subscription: {
-              plan: subscription.plan,
-              expiresAt: subscription.expiresAt,
-            },
-            aiUsage: subscription.aiUsage,
-            aiDailyLimit: subscription.dailyLimit,
-            aiRemaining: subscription.remaining,
-          });
-
-          toast.success("Premium activated successfully.");
-          onClose?.();
-        },
-        modal: {
-          ondismiss: () => {
-            setLoading(false);
-          },
-        },
-      });
-
-      razorpay.open();
+      toast.info("Premium is coming soon.");
     } catch (error) {
       console.error("Error starting premium checkout:", error);
-      toast.error(
-        error?.response?.data?.message || "Unable to start premium checkout."
-      );
+      toast.error("Unable to open premium right now.");
     } finally {
       setLoading(false);
     }
@@ -175,6 +88,16 @@ function PremiumUpgradeModal({ isOpen, onClose }) {
                 30 days validity. Daily AI limit resets every midnight.
               </p>
 
+              <div className="mb-5 rounded-2xl border border-cyan-300/15 bg-cyan-400/8 px-4 py-3 text-sm text-cyan-100">
+                <div className="flex items-center gap-2 font-medium">
+                  <Clock3 className="h-4 w-4" />
+                  Coming soon
+                </div>
+                <p className="mt-1 text-xs text-cyan-100/80">
+                  Premium checkout will be enabled once Razorpay keys are configured.
+                </p>
+              </div>
+
               <button
                 type="button"
                 onClick={handleUpgrade}
@@ -182,7 +105,7 @@ function PremiumUpgradeModal({ isOpen, onClose }) {
                 className="mt-auto inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 px-5 py-3 font-medium text-white shadow-[0_18px_40px_rgba(124,92,255,0.22)] transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? (
-                  "Starting checkout..."
+                  "Opening..."
                 ) : (
                   <>
                     <Lock className="h-4 w-4" />
