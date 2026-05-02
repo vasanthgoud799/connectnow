@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import Auth from "./components/Auth"
 import Home from "./components/Home";
@@ -40,6 +40,10 @@ function App() {
   const { user } = useUser();
   const [loading, setLoading] = useState(true);
   const authReady = isLoaded && !loading;
+  const hasSyncedRef = useRef(false);
+  const syncInFlightRef = useRef(false);
+  const retryTimeoutRef = useRef(null);
+  const retryCountRef = useRef(0);
 
   useEffect(() => {
     if (!sessionStorage.getItem("connectnow-auth-page-opened-at")) {
@@ -48,10 +52,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const syncClerkUser = async () => {
+    const clearRetryTimeout = () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
+
+    const syncClerkUser = async ({ isRetry = false } = {}) => {
+      if (syncInFlightRef.current) {
+        console.info("Skipping duplicate Clerk sync request because one is already in flight.");
+        return;
+      }
+
       try {
+        syncInFlightRef.current = true;
         const token = await getToken();
         if (!token) {
+          hasSyncedRef.current = false;
           setUserInfo(undefined);
           setLoading(false);
           return;
@@ -87,14 +105,41 @@ function App() {
         });
 
         if (sessionResponse.status === 200 && sessionResponse.data?.id) {
+          clearRetryTimeout();
+          retryCountRef.current = 0;
+          hasSyncedRef.current = true;
           setUserInfo(sessionResponse.data);
         } else {
+          hasSyncedRef.current = false;
           setUserInfo(undefined);
         }
       } catch (error) {
         console.error("Error syncing Clerk user:", error);
-        setUserInfo(undefined);
+        const status = Number(error?.response?.status || 0);
+        const retryAfterHeader = Number(error?.response?.headers?.["retry-after"] || 0);
+        const retryAfterBody = Number(error?.response?.data?.retryAfterSeconds || 0);
+        const retryAfterSeconds = retryAfterHeader || retryAfterBody;
+        const shouldRetry =
+          status === 429 && retryCountRef.current < 1 && retryAfterSeconds > 0;
+
+        if (shouldRetry) {
+          retryCountRef.current += 1;
+          hasSyncedRef.current = false;
+          clearRetryTimeout();
+          console.warn(
+            `Clerk sync rate-limited. Retrying once in ${retryAfterSeconds} seconds.`
+          );
+          retryTimeoutRef.current = setTimeout(() => {
+            syncClerkUser({ isRetry: true });
+          }, retryAfterSeconds * 1000);
+        } else {
+          if (isRetry) {
+            console.error("Clerk sync retry failed. No further retries will be attempted.");
+          }
+          setUserInfo(undefined);
+        }
       } finally {
+        syncInFlightRef.current = false;
         setLoading(false);
       }
     };
@@ -102,12 +147,30 @@ function App() {
     if (!isLoaded) return;
 
     if (!isSignedIn) {
+      clearRetryTimeout();
+      hasSyncedRef.current = false;
+      syncInFlightRef.current = false;
+      retryCountRef.current = 0;
       setUserInfo(undefined);
       setLoading(false);
       return;
     }
 
+    if (!user?.id) {
+      return;
+    }
+
+    if (hasSyncedRef.current) {
+      console.info("Skipping duplicate Clerk sync because the current Clerk user is already synced.");
+      setLoading(false);
+      return;
+    }
+
     syncClerkUser();
+
+    return () => {
+      clearRetryTimeout();
+    };
   }, [getToken, isLoaded, isSignedIn, setUserInfo, user?.id]);
 
   useEffect(() => {

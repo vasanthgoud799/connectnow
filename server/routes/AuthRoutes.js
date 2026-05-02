@@ -7,9 +7,6 @@ import {
 } from "../controllers/AuthController.js";
 import { verifyToken } from "../middlewares/AuthMiddleware.js";
 import {
-  authDeviceRateLimiter,
-  authRateLimiter,
-  authUserIpRateLimiter,
   invisibleBotProtection,
 } from "../middlewares/SecurityMiddleware.js";
 import {
@@ -22,9 +19,6 @@ const authRoutes = Router();
 
 authRoutes.post(
   "/clerk/sync",
-  authRateLimiter,
-  authDeviceRateLimiter,
-  authUserIpRateLimiter,
   validateClerkSync,
   invisibleBotProtection,
   requireCaptchaIfConfigured,

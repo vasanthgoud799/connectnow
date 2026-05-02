@@ -161,13 +161,23 @@ export const createRateLimiter = ({
     buckets.set(key, bucket);
 
     if (bucket.hits.length > limit) {
+      const oldestRelevantHit = bucket.hits[0] || now;
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((windowMs - (now - oldestRelevantHit)) / 1000)
+      );
       logSecurityEvent({
         req,
         type: "rate_limit_exceeded",
         severity: "medium",
         metadata: { limiter: name },
       });
-      return res.status(429).json({ message });
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      return res.status(429).json({
+        message,
+        code: "RATE_LIMITED",
+        retryAfterSeconds,
+      });
     }
 
     return next();
