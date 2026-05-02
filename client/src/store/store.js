@@ -1,23 +1,25 @@
 import { createStore } from "redux";
 import { persistStore, persistReducer } from "redux-persist";
-import storage from "redux-persist/lib/storage"; // localStorage
-import { composeWithDevTools } from "redux-devtools-extension";
-import rootReducer from "./reducer"; // Root reducer with nested persist config
+import storage from "redux-persist/lib/storage";
+import rootReducer from "./reducer";
 
-// Persist config to specify the storage and whitelist for persistence
+// Persist config
 const persistConfig = {
   key: "root",
   storage,
-  whitelist: ["Home"], // Persist only the 'Home' slice (dashboard-related state)
+  whitelist: ["Home"],
 };
 
-// Create a persisted reducer
+// Persisted reducer
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-// Create the Redux store with dev tools
-const store = createStore(persistedReducer, composeWithDevTools());
+// Create store (Redux DevTools works automatically in browser)
+const store = createStore(
+  persistedReducer,
+  window.__REDUX_DEVTOOLS_EXTENSION__ && window.__REDUX_DEVTOOLS_EXTENSION__(),
+);
 
-// Create persistor for Redux persistence
+// Persistor
 const persistor = persistStore(store);
 
 export { store, persistor };
