@@ -437,6 +437,7 @@ const setupSocket = (server) => {
       const token = cookies[SESSION_COOKIE_NAME] || socket.handshake.auth?.token;
       const csrfCookie = cookies[CSRF_COOKIE_NAME];
       const csrfToken = socket.handshake.auth?.csrfToken || socket.handshake.headers?.["x-csrf-token"];
+      const usingAuthTokenFallback = Boolean(socket.handshake.auth?.token && !cookies[SESSION_COOKIE_NAME]);
 
       if (!token) {
         await logSecurityEvent({
@@ -461,12 +462,12 @@ const setupSocket = (server) => {
         return next(new Error("Unauthorized"));
       }
 
-      if (
-        !csrfToken ||
-        !csrfCookie ||
-        csrfToken !== csrfCookie ||
-        hashValue(csrfToken) !== validation.session.csrfTokenHash
-      ) {
+      const csrfMatchesSession =
+        Boolean(csrfToken) && hashValue(csrfToken) === validation.session.csrfTokenHash;
+      const csrfMatchesCookie =
+        Boolean(csrfToken) && Boolean(csrfCookie) && csrfToken === csrfCookie;
+
+      if (!csrfMatchesSession || (!usingAuthTokenFallback && !csrfMatchesCookie)) {
         await logSecurityEvent({
           req,
           type: "socket_csrf_validation_failed",

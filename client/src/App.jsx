@@ -105,9 +105,15 @@ function App() {
           }
         );
 
-        if (syncResponse.status === 200 && syncResponse.data?.user?.id) {
+        const returnedSessionToken = syncResponse.data?.session?.token || "";
+
+        if (
+          syncResponse.status === 200 &&
+          syncResponse.data?.user?.id &&
+          returnedSessionToken
+        ) {
           persistAppSession({
-            token: syncResponse.data?.session?.token || "",
+            token: returnedSessionToken,
             csrfToken: syncResponse.data?.session?.csrfToken || "",
           });
           clearRetryTimeout();
@@ -115,6 +121,9 @@ function App() {
           hasSyncedRef.current = true;
           setUserInfo(syncResponse.data.user);
         } else {
+          console.error(
+            "Clerk sync completed without an app session token. This usually means the backend deployment is outdated or session persistence is misconfigured."
+          );
           hasSyncedRef.current = false;
           clearPersistedAppSession();
           setUserInfo(undefined);

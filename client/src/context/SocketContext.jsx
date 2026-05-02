@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useAppStore } from "@/store";
 import { HOST } from "@/utils/constants";
-import { getStoredAppSessionToken } from "@/lib/api-client";
+import { getStoredAppSessionToken, getStoredCsrfToken } from "@/lib/api-client";
 import {
   connectWithWebSocket,
   disconnectWebSocket,
@@ -42,7 +42,7 @@ const SocketProvider = ({ children }) => {
         reconnectionDelay: 500,
         reconnectionDelayMax: 1500,
         auth: {
-          csrfToken: decodeURIComponent(getCookieValue("csrf_token")),
+          csrfToken: decodeURIComponent(getCookieValue("csrf_token")) || getStoredCsrfToken(),
           token: getStoredAppSessionToken(),
         },
       });
