@@ -90,7 +90,7 @@ app.use(attachRequestContext);
 app.use("/api/auth", authRoutes);
 
 /* Apply limiter AFTER auth */
-app.use(globalRateLimiter);
+// app.use(globalRateLimiter);
 
 /* -------------------- Static / Raw -------------------- */
 app.use("/uploads/files", express.static("uploads/files"));
