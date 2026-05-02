@@ -1,23 +1,36 @@
 import { Router } from "express";
 import {
   getUserInfo,
-  login,
   logout,
-  signUp,
+  syncClerkSession,
   updateProfile,
 } from "../controllers/AuthController.js";
 import { verifyToken } from "../middlewares/AuthMiddleware.js";
-import { requestOTP, validateOTP } from "../controllers/otpController.js";
+import {
+  authDeviceRateLimiter,
+  authRateLimiter,
+  authUserIpRateLimiter,
+  invisibleBotProtection,
+} from "../middlewares/SecurityMiddleware.js";
+import {
+  validateClerkSync,
+  validateProfileUpdate,
+} from "../middlewares/ValidationMiddleware.js";
+import { requireCaptchaIfConfigured } from "../utils/Captcha.js";
 
 const authRoutes = Router();
 
-authRoutes.post("/signup", signUp);
-authRoutes.post("/login", login);
+authRoutes.post(
+  "/clerk/sync",
+  authRateLimiter,
+  authDeviceRateLimiter,
+  authUserIpRateLimiter,
+  validateClerkSync,
+  invisibleBotProtection,
+  requireCaptchaIfConfigured,
+  syncClerkSession
+);
 authRoutes.get("/user-info", verifyToken, getUserInfo);
-authRoutes.post("/update-profile", verifyToken, updateProfile);
+authRoutes.post("/update-profile", verifyToken, validateProfileUpdate, updateProfile);
 authRoutes.post("/logout", verifyToken, logout);
-
-authRoutes.post("/request-otp", requestOTP);
-
-authRoutes.post("/validate-otp", validateOTP);
 export default authRoutes;

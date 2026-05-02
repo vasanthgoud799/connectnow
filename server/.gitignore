@@ -1,2 +1,6 @@
 /node_modules
 /uploads/files
+*.log
+.env
+.env.*
+!.env.example

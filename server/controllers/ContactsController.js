@@ -1,9 +1,10 @@
 import Chat from "../models/ChatModel.js";
 import User from "../models/UserModel.js";
+import { getRelationshipStatusMap, sendFriendRequest } from "../services/FriendRequestService.js";
 
 export const searchContacts = async (req, res) => {
   try {
-    const { searchTerm } = req.body;
+    const { searchTerm } = req.validated?.contactSearch || {};
 
     if (!searchTerm) {
       return res.status(400).send("searchTerm is required.");
@@ -16,48 +17,65 @@ export const searchContacts = async (req, res) => {
 
     const regex = new RegExp(sanitizedSearchTerm, "i");
 
+    const currentUser = await User.findById(req.userId).select(
+      "friends blockedUsers sentRequests receivedRequests"
+    );
+
     const contacts = await User.find({
       $and: [{ _id: { $ne: req.userId } }], // Ensure you're using the correct field name for user ID
       $or: [{ firstName: regex }, { lastName: regex }, { email: regex }],
+    }).select("firstName lastName email image about birthday");
+
+    const existingFriendIds = new Set(
+      (currentUser?.friends || []).map((friendId) => friendId.toString())
+    );
+    const blockedIds = new Set(
+      (currentUser?.blockedUsers || []).map((userId) => userId.toString())
+    );
+
+    const filteredContacts = contacts.filter((contact) => {
+      const contactId = contact._id.toString();
+      return !existingFriendIds.has(contactId) && !blockedIds.has(contactId);
     });
 
-    return res.status(200).json({ contacts });
+    const relationStatusMap = await getRelationshipStatusMap({
+      currentUserId: req.userId,
+      targetIds: filteredContacts.map((contact) => contact._id),
+    });
+
+    const contactsWithStatus = filteredContacts.map((contact) => ({
+      ...contact.toObject(),
+      relationStatus: relationStatusMap[String(contact._id)] || "none",
+    }));
+
+    return res.status(200).json({ contacts: contactsWithStatus });
   } catch (error) {
     console.error("Error searching contacts", error);
-    res.status(500).json({ message: "Error searching contacts", error });
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
 export const addFriend = async (req, res) => {
   try {
-    const { contactId } = req.body;
-    const userId = req.userId; // Assuming userId is attached to req object after authentication
+    const contactId = req.validated?.contactId;
+    const userId = req.userId;
 
     if (!contactId) {
       return res.status(400).send("contactId is required.");
     }
 
-    const user = await User.findById(userId);
-    const contact = await User.findById(contactId);
+    const request = await sendFriendRequest({
+      senderId: userId,
+      receiverId: contactId,
+    });
 
-    if (!user || !contact) {
-      return res.status(404).send("User or contact not found.");
-    }
-
-    if (user.friends.includes(contactId)) {
-      return res.status(400).send("Already friends.");
-    }
-
-    user.friends.push(contactId);
-    contact.friends.push(userId);
-
-    await user.save();
-    await contact.save();
-
-    res.status(200).send("Friend added successfully.");
+    res.status(200).json({
+      message: "Friend request sent successfully.",
+      request,
+    });
   } catch (error) {
     console.error("Error adding friend", error);
-    res.status(500).json({ message: "Error adding friend", error });
+    res.status(400).json({ message: error.message || "Error sending friend request" });
   }
 };
 
@@ -94,23 +112,55 @@ export const addFriend = async (req, res) => {
 
 export const getUserDetails = async (req, res) => {
   try {
-    const { userIds } = req.body;
-    const users = await User.find({ _id: { $in: userIds } });
+    const userIds = req.validated?.userIds || [];
+    const currentUser = await User.findById(req.userId).select("friends");
+    const allowedIds = new Set((currentUser?.friends || []).map((id) => String(id)));
+    const requestedIds = (Array.isArray(userIds) ? userIds : []).filter((id) =>
+      allowedIds.has(String(id))
+    );
+    const users = await User.find({ _id: { $in: requestedIds } }).select(
+      "firstName lastName email image about status lastSeen birthday"
+    );
 
     // Return basic user details without last message
     res.status(200).json({ users });
   } catch (error) {
     console.error("Error fetching user details:", error);
-    res.status(500).json({ message: "Error fetching user details", error });
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const listContacts = async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.userId).select("friends");
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const users = await User.find({
+      _id: { $in: currentUser.friends || [] },
+    }).select("firstName lastName email image about status lastSeen birthday");
+
+    res.status(200).json({ contacts: users });
+  } catch (error) {
+    console.error("Error listing contacts:", error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
 export const getLastMessageForUsers = async (req, res) => {
   try {
-    const { userIds, currentUserId } = req.body;
+    const userIds = req.validated?.userIds || [];
+    const currentUserId = req.userId;
+    const currentUser = await User.findById(req.userId).select("friends");
+    const allowedIds = new Set((currentUser?.friends || []).map((id) => String(id)));
+    const requestedIds = (Array.isArray(userIds) ? userIds : []).filter((id) =>
+      allowedIds.has(String(id))
+    );
 
     const lastMessages = await Promise.all(
-      userIds.map(async (friendId) => {
+      requestedIds.map(async (friendId) => {
         const lastMessage = await Chat.findOne({
           $or: [
             { sender: currentUserId, recipient: friendId },
@@ -129,6 +179,6 @@ export const getLastMessageForUsers = async (req, res) => {
     res.status(200).json({ lastMessages });
   } catch (error) {
     console.error("Error fetching last messages:", error);
-    res.status(500).json({ message: "Error fetching last messages", error });
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };

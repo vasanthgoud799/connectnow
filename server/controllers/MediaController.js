@@ -1,0 +1,144 @@
+import Group from "../models/GroupModel.js";
+import User from "../models/UserModel.js";
+import {
+  createSignedMediaUrl,
+  createSignedUploadIntent,
+} from "../services/MediaStorageService.js";
+
+const buildEntityMediaEtag = ({ storageProvider, storageBucket, storagePath, image }) =>
+  `"${[storageProvider || "local", storageBucket || "", storagePath || image || ""].join(":")}"`;
+
+const buildAbsoluteLocalUrl = (req, pathOrUrl) => {
+  if (!pathOrUrl) return null;
+  if (/^https?:\/\//i.test(pathOrUrl) || String(pathOrUrl).startsWith("data:")) {
+    return pathOrUrl;
+  }
+
+  const normalizedPath = String(pathOrUrl).replace(/^\/+/, "");
+  return `${req.protocol}://${req.get("host")}/${normalizedPath}`;
+};
+
+const redirectToEntityImage = async ({
+  req,
+  res,
+  image,
+  storageProvider,
+  storagePath,
+  storageBucket,
+}) => {
+  if (!image && !storagePath) {
+    return res.status(404).json({ message: "Media not found." });
+  }
+
+  if (storageProvider === "supabase" && storagePath) {
+    try {
+      const etag = buildEntityMediaEtag({
+        storageProvider,
+        storageBucket,
+        storagePath,
+        image,
+      });
+      res.setHeader("Cache-Control", "private, max-age=86400, stale-while-revalidate=604800");
+      res.setHeader("ETag", etag);
+
+      if (req.headers["if-none-match"] === etag) {
+        return res.status(304).end();
+      }
+
+      const signedUrl = await createSignedMediaUrl({
+        storageProvider,
+        storagePath,
+        storageBucket,
+        expiresIn: 60 * 60 * 24 * 7,
+      });
+
+      if (signedUrl) {
+        return res.redirect(signedUrl);
+      }
+    } catch (error) {
+      console.error("Error signing stable media URL:", error.message);
+      return res.status(500).json({ message: "Failed to load media." });
+    }
+  }
+
+  const fallbackUrl = buildAbsoluteLocalUrl(req, storagePath || image);
+  if (!fallbackUrl) {
+    return res.status(404).json({ message: "Media not found." });
+  }
+
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  return res.redirect(fallbackUrl);
+};
+
+export const getUserImage = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId).select(
+      "image imageStorageProvider imageStoragePath imageStorageBucket"
+    );
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    return redirectToEntityImage({
+      req,
+      res,
+      image: user.image,
+      storageProvider: user.imageStorageProvider,
+      storagePath: user.imageStoragePath,
+      storageBucket: user.imageStorageBucket,
+    });
+  } catch (error) {
+    console.error("Error loading user image:", error);
+    return res.status(500).json({ message: "Failed to load user image." });
+  }
+};
+
+export const getGroupImage = async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId).select(
+      "image imageStorageProvider imageStoragePath imageStorageBucket"
+    );
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found." });
+    }
+
+    return redirectToEntityImage({
+      req,
+      res,
+      image: group.image,
+      storageProvider: group.imageStorageProvider,
+      storagePath: group.imageStoragePath,
+      storageBucket: group.imageStorageBucket,
+    });
+  } catch (error) {
+    console.error("Error loading group image:", error);
+    return res.status(500).json({ message: "Failed to load group image." });
+  }
+};
+
+export const createUploadIntent = async (req, res) => {
+  try {
+    const uploadIntent = req.validated?.uploadIntent || {};
+    const originalName = uploadIntent.originalName || "upload.bin";
+    const mimeType = uploadIntent.mimeType || "application/octet-stream";
+    const size = Number(uploadIntent.size || 0);
+    const maxSize = Number(process.env.SIGNED_UPLOAD_MAX_BYTES || 50 * 1024 * 1024);
+
+    if (!originalName || !mimeType || !size || size > maxSize) {
+      return res.status(400).json({ message: "Invalid upload request." });
+    }
+
+    const intent = await createSignedUploadIntent({
+      userId: req.userId,
+      originalName,
+      mimeType,
+    });
+
+    return res.status(201).json({ intent });
+  } catch (error) {
+    console.error("Error creating upload intent:", error.message);
+    return res.status(500).json({ message: "Unable to create upload intent." });
+  }
+};
