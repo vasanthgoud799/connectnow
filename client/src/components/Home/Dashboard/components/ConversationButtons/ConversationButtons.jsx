@@ -6,9 +6,9 @@ import { switchForScreenSharingStream, hangUp } from '@utils/webRTC/webRTCHandle
 const styles = {
   buttonContainer: {
     display: 'flex',
-    position: 'absolute',
-    bottom: '22%',
-    left: '35%'
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '14px',
   },
   icon: {
     width: '25px',
@@ -25,7 +25,10 @@ const ConversationButtons = (props) => {
     setCameraEnabled,
     setMicrophoneEnabled,
     screenSharingActive,
-    groupCall
+    groupCall,
+    callType,
+    onHangUp,
+    showHangUp = true,
   } = props;
 
   const handleMicButtonPressed = () => {
@@ -36,6 +39,7 @@ const ConversationButtons = (props) => {
 
   const handleCameraButtonPressed = () => {
     const cameraEnabled = localCameraEnabled;
+    if (!localStream?.getVideoTracks?.()[0]) return;
     localStream.getVideoTracks()[0].enabled = !cameraEnabled;
     setCameraEnabled(!cameraEnabled);
   };
@@ -45,6 +49,11 @@ const ConversationButtons = (props) => {
   };
 
   const handleHangUpButtonPressed = () => {
+    if (typeof onHangUp === "function") {
+      onHangUp();
+      return;
+    }
+
     hangUp();
   };
 
@@ -53,15 +62,21 @@ const ConversationButtons = (props) => {
       <ConversationButton onClickHandler={handleMicButtonPressed}>
         {localMicrophoneEnabled ? <MdMic style={styles.icon} /> : <MdMicOff style={styles.icon} />}
       </ConversationButton>
-      {!groupCall && <ConversationButton onClickHandler={handleHangUpButtonPressed}>
-        <MdCallEnd style={styles.icon} />
-      </ConversationButton>}
-      <ConversationButton onClickHandler={handleCameraButtonPressed}>
-        {localCameraEnabled ? <MdVideocam style={styles.icon} /> : <MdVideocamOff style={styles.icon} />}
-      </ConversationButton>
-      {!groupCall && <ConversationButton onClickHandler={handleScreenSharingButtonPressed}>
-        {screenSharingActive ? <MdCamera style={styles.icon} /> : <MdVideoLabel style={styles.icon} />}
-      </ConversationButton>}
+      {showHangUp && (
+        <ConversationButton onClickHandler={handleHangUpButtonPressed}>
+          <MdCallEnd style={styles.icon} />
+        </ConversationButton>
+      )}
+      {callType === "video" && (
+        <ConversationButton onClickHandler={handleCameraButtonPressed}>
+          {localCameraEnabled ? <MdVideocam style={styles.icon} /> : <MdVideocamOff style={styles.icon} />}
+        </ConversationButton>
+      )}
+      {!groupCall && callType === "video" && (
+        <ConversationButton onClickHandler={handleScreenSharingButtonPressed}>
+          {screenSharingActive ? <MdCamera style={styles.icon} /> : <MdVideoLabel style={styles.icon} />}
+        </ConversationButton>
+      )}
     </div>
   );
 };

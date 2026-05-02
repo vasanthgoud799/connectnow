@@ -1,34 +1,35 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from "react";
 
-const styles = {
-  videoContainer: {
-    width: '100%',
-    height: '100%'
-  },
-  videoElement: {
-    width: '100%',
-    height: '100%'
-  }
-};
-
-const RemoteVideoView = props => {
+const RemoteVideoView = (props) => {
   const { remoteStream } = props;
   const remoteVideoRef = useRef();
+  const remoteAudioRef = useRef();
 
   useEffect(() => {
     if (remoteStream) {
       const remoteVideo = remoteVideoRef.current;
+      const remoteAudio = remoteAudioRef.current;
       remoteVideo.srcObject = remoteStream;
+      if (remoteAudio) {
+        remoteAudio.srcObject = remoteStream;
+        remoteAudio.play().catch(() => {});
+      }
 
       remoteVideo.onloadedmetadata = () => {
-        remoteVideo.play();
+        remoteVideo.play().catch(() => {});
       };
     }
   }, [remoteStream]);
 
   return (
-    <div style={styles.videoContainer}>
-      <video style={styles.videoElement} ref={remoteVideoRef} autoPlay muted={false}/>
+    <div className="h-full w-full">
+      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <video
+        className="h-full w-full object-cover"
+        ref={remoteVideoRef}
+        autoPlay
+        playsInline
+      />
     </div>
   );
 };

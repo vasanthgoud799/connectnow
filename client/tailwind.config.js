@@ -1,5 +1,7 @@
+import tailwindcssAnimate from "tailwindcss-animate";
+
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+const config = {
   darkMode: ["class"],
   content: [
     "./pages/**/*.{js,jsx}",
@@ -7,14 +9,6 @@ module.exports = {
     "./app/**/*.{js,jsx}",
     "./src/**/*.{js,jsx}",
   ],
-  theme: {
-    extend: {
-      rotate: {
-        135: "135deg",
-      },
-    },
-  },
-  prefix: "",
   theme: {
     container: {
       center: true,
@@ -24,6 +18,9 @@ module.exports = {
       },
     },
     extend: {
+      rotate: {
+        135: "135deg",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -64,20 +61,11 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-
-      extend: {
-        animation: {
-          "move-light": "move-light 3s linear infinite",
-        },
-        keyframes: {
-          "move-light": {
-            "0%": { backgroundPosition: "-200% 0" },
-            "100%": { backgroundPosition: "200% 0" },
-          },
-        },
-      },
-
       keyframes: {
+        "move-light": {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -88,26 +76,23 @@ module.exports = {
         },
       },
       animation: {
+        "move-light": "move-light 3s linear infinite",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
     },
   },
-
-  plugins: [require("tailwindcss-animate")],
-
   plugins: [
+    tailwindcssAnimate,
     function ({ addUtilities }) {
       addUtilities(
         {
           ".scrollbar-hide": {
-            /* Hide scrollbar for Chrome, Safari, and Opera */
             "&::-webkit-scrollbar": {
               display: "none",
             },
-            /* Hide scrollbar for IE, Edge, and Firefox */
-            "-ms-overflow-style": "none" /* IE and Edge */,
-            "scrollbar-width": "none" /* Firefox */,
+            "-ms-overflow-style": "none",
+            scrollbarWidth: "none",
           },
         },
         ["responsive", "hover"]
@@ -115,3 +100,5 @@ module.exports = {
     },
   ],
 };
+
+export default config;

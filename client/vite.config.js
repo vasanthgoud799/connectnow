@@ -1,10 +1,12 @@
 import path from "path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { ESLint, loadESLint } from "eslint";
 
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    force: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -14,11 +16,12 @@ export default defineConfig({
   },
 
   server: {
-    host: "127.0.0.1",
+    host: "localhost",
     port: 5173,
+    strictPort: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:5173",
+        target: "http://localhost:8747",
         changeOrigin: true,
       },
     },

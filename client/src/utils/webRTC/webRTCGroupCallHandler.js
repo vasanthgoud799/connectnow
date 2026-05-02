@@ -1,131 +1,486 @@
-import * as wss from "../wssConnection/wssConnection";
-import store from "../../store/store";
+import { toast } from "sonner";
+
+import { store } from "../../store/store";
 import {
-  setGroupCallActive,
-  setCallState,
   callStates,
-  setGroupCallIncomingStreams,
-  clearGroupCallData,
+  setCallRejected,
+  setGroupCallConnecting,
+  clearGroupCallState,
+  removeGroupCallParticipant,
+  resetCallDataState,
+  setCallState,
+  setCallType,
+  setCallerImage,
+  setCallerUsername,
+  setGroupCallIncoming,
+  setGroupCallParticipants,
+  setGroupCallSession,
+  upsertGroupCallParticipant,
 } from "../../store/actions/callActions";
+import { useAppStore } from "@/store";
+import * as wss from "../wssConnection/wssConnection";
+import { getLocalStream } from "./webRTCHandler";
 
-let myPeer;
-let myPeerId;
-let groupCallRoomId;
-let groupCallHost = false;
+const groupCallContext = {
+  sessionId: null,
+  groupId: null,
+  groupName: "",
+  callType: "audio",
+  cancelRequestedBeforeStart: false,
+  peerConnections: new Map(),
+  pendingCandidates: new Map(),
+};
 
-export const connectWithMyPeer = () => {
-  myPeer = new window.Peer(undefined, {
-    path: "/peerjs",
-    host: "/",
-    port: "5000",
+const rtcConfiguration = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+};
+
+const getCallState = () => store.getState().call;
+
+const normalizeParticipant = (participant, stream = null) => ({
+  userId: String(participant.userId),
+  socketId: participant.socketId || null,
+  username: participant.username || participant.displayName || "Member",
+  displayName: participant.displayName || participant.username || "Member",
+  image: participant.image || null,
+  email: participant.email || null,
+  stream,
+});
+
+const serializeSessionDescription = (description) => {
+  if (!description) return null;
+
+  return {
+    type: description.type,
+    sdp: description.sdp,
+  };
+};
+
+const serializeIceCandidate = (candidate) => {
+  if (!candidate) return null;
+
+  if (typeof candidate.toJSON === "function") {
+    return candidate.toJSON();
+  }
+
+  return {
+    candidate: candidate.candidate,
+    sdpMid: candidate.sdpMid,
+    sdpMLineIndex: candidate.sdpMLineIndex,
+    usernameFragment: candidate.usernameFragment,
+  };
+};
+
+const queueCandidate = (remoteUserId, candidate) => {
+  const nextQueue = groupCallContext.pendingCandidates.get(remoteUserId) || [];
+  nextQueue.push(candidate);
+  groupCallContext.pendingCandidates.set(remoteUserId, nextQueue);
+};
+
+const flushPendingCandidates = async (remoteUserId) => {
+  const peerConnection = groupCallContext.peerConnections.get(remoteUserId);
+  if (!peerConnection || !peerConnection.remoteDescription) return;
+
+  const queued = groupCallContext.pendingCandidates.get(remoteUserId) || [];
+  groupCallContext.pendingCandidates.delete(remoteUserId);
+
+  for (const candidate of queued) {
+    try {
+      await peerConnection.addIceCandidate(candidate);
+    } catch (error) {
+      console.error("Error applying queued group ICE candidate:", error);
+    }
+  }
+};
+
+const destroyPeerConnection = (remoteUserId) => {
+  const peerConnection = groupCallContext.peerConnections.get(remoteUserId);
+  if (!peerConnection) return;
+
+  peerConnection.onicecandidate = null;
+  peerConnection.ontrack = null;
+  peerConnection.onconnectionstatechange = null;
+  peerConnection.close();
+  groupCallContext.peerConnections.delete(remoteUserId);
+  groupCallContext.pendingCandidates.delete(remoteUserId);
+};
+
+const createPeerConnection = (remoteUserId) => {
+  const existing = groupCallContext.peerConnections.get(remoteUserId);
+  if (existing) return existing;
+
+  const { localStream } = getCallState();
+  if (!localStream) return null;
+
+  const peerConnection = new RTCPeerConnection(rtcConfiguration);
+  localStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localStream);
   });
 
-  myPeer.on("open", (id) => {
-    console.log("succesfully connected with peer server");
-    myPeerId = id;
-  });
+  peerConnection.ontrack = ({ streams: [stream] }) => {
+    store.dispatch(
+      upsertGroupCallParticipant({
+        userId: remoteUserId,
+        stream,
+      })
+    );
+  };
 
-  myPeer.on("call", (call) => {
-    call.answer(store.getState().call.localStream);
-    call.on("stream", (incomingStream) => {
-      const streams = store.getState().call.groupCallStreams;
-      const stream = streams.find((stream) => stream.id === incomingStream.id);
+  peerConnection.onicecandidate = (event) => {
+    if (!event.candidate || !groupCallContext.sessionId) return;
 
-      if (!stream) {
-        addVideoStream(incomingStream);
-      }
+    wss.sendGroupCallCandidate({
+      sessionId: groupCallContext.sessionId,
+      targetUserId: remoteUserId,
+      candidate: serializeIceCandidate(event.candidate),
     });
+  };
+
+  peerConnection.onconnectionstatechange = () => {
+    if (
+      ["failed", "closed", "disconnected"].includes(
+        peerConnection.connectionState
+      )
+    ) {
+      destroyPeerConnection(remoteUserId);
+      store.dispatch(removeGroupCallParticipant(remoteUserId));
+    }
+  };
+
+  groupCallContext.peerConnections.set(remoteUserId, peerConnection);
+  return peerConnection;
+};
+
+const createOfferForParticipant = async (remoteUserId) => {
+  const peerConnection = createPeerConnection(remoteUserId);
+  if (!peerConnection) return;
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  wss.sendGroupCallOffer({
+    sessionId: groupCallContext.sessionId,
+    targetUserId: remoteUserId,
+    offer: serializeSessionDescription(offer),
   });
 };
 
-export const createNewGroupCall = () => {
-  groupCallHost = true;
-  wss.registerGroupCall({
-    username: store.getState().dashboard.username,
-    peerId: myPeerId,
-  });
+const cleanupGroupCall = ({ preserveLocalStream = true } = {}) => {
+  [...groupCallContext.peerConnections.keys()].forEach(destroyPeerConnection);
+  groupCallContext.pendingCandidates.clear();
+  groupCallContext.sessionId = null;
+  groupCallContext.groupId = null;
+  groupCallContext.groupName = "";
+  groupCallContext.callType = "audio";
+  groupCallContext.cancelRequestedBeforeStart = false;
 
-  store.dispatch(setGroupCallActive(true));
+  if (!preserveLocalStream) {
+    const localStream = getCallState().localStream;
+    localStream?.getTracks?.().forEach((track) => track.stop());
+  }
+
+  store.dispatch(clearGroupCallState());
+  store.dispatch(setGroupCallConnecting(false));
+  store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+};
+
+export const startGroupCall = async ({
+  groupId,
+  groupName,
+  participantIds = [],
+  callType = "audio",
+}) => {
+  groupCallContext.cancelRequestedBeforeStart = false;
+  const ready = await getLocalStream(callType, { skipPeerConnection: true });
+  if (!ready) {
+    toast.error("Unable to access microphone or camera for this group call.");
+    return;
+  }
+
+  store.dispatch(setGroupCallConnecting(true));
   store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+
+  wss.sendGroupCallStart(
+    {
+      groupId,
+      groupName,
+      participantIds,
+      callType,
+    },
+    (ack) => {
+      if (!ack?.ok) {
+        store.dispatch(setGroupCallConnecting(false));
+        store.dispatch(
+          setCallRejected({
+            rejected: true,
+            reason: ack?.error || "Unable to start group call.",
+          })
+        );
+        store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+        return;
+      }
+
+      groupCallContext.sessionId = ack.sessionId;
+      groupCallContext.groupId = ack.groupId;
+      groupCallContext.groupName = ack.groupName;
+      groupCallContext.callType = ack.callType;
+
+      if (groupCallContext.cancelRequestedBeforeStart) {
+        wss.sendGroupCallLeave({ sessionId: ack.sessionId });
+        cleanupGroupCall();
+        return;
+      }
+
+      const localUserId = String(useAppStore.getState().userInfo?.id || "");
+      const localStream = getCallState().localStream;
+      const participants = (ack.participants || []).map((participant) =>
+        normalizeParticipant(
+          participant,
+          String(participant.userId) === localUserId ? localStream : null
+        )
+      );
+
+      store.dispatch(
+        setGroupCallSession({
+          sessionId: ack.sessionId,
+          groupId: ack.groupId,
+          groupName: ack.groupName,
+          callType: ack.callType,
+        })
+      );
+      store.dispatch(setGroupCallParticipants(participants));
+      store.dispatch(setGroupCallConnecting(false));
+      store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+    }
+  );
 };
 
-export const joinGroupCall = (hostSocketId, roomId) => {
-  const localStream = store.getState().call.localStream;
-  groupCallRoomId = roomId;
+export const handleIncomingGroupCall = (data) => {
+  const currentCallState = getCallState();
+  if (
+    currentCallState.groupCallIncoming ||
+    currentCallState.groupCallSession ||
+    currentCallState.callState === callStates.CALL_IN_PROGRESS ||
+    currentCallState.callState === callStates.CALL_REQUESTED
+  ) {
+    wss.sendGroupCallReject({ sessionId: data.sessionId });
+    return;
+  }
 
-  wss.userWantsToJoinGroupCall({
-    peerId: myPeerId,
-    hostSocketId,
-    roomId,
-    localStreamId: localStream.id,
+  store.dispatch(resetCallDataState());
+  store.dispatch(
+    setCallRejected({
+      rejected: false,
+      reason: "",
+    })
+  );
+  store.dispatch(setCallerUsername(data.callerUsername || "Group member"));
+  store.dispatch(setCallerImage(data.callerImage || null));
+  store.dispatch(setCallType(data.callType || "audio"));
+  store.dispatch(setCallState(callStates.CALL_REQUESTED));
+  store.dispatch(
+    setGroupCallIncoming({
+      sessionId: data.sessionId,
+      groupId: data.groupId,
+      groupName: data.groupName,
+      callType: data.callType || "audio",
+      callerUserId: data.callerUserId,
+      callerUsername: data.callerUsername || "Group member",
+      callerImage: data.callerImage || null,
+      invitedCount: data.invitedCount || 0,
+    })
+  );
+};
+
+export const acceptIncomingGroupCallRequest = async () => {
+  const incoming = getCallState().groupCallIncoming;
+  if (!incoming?.sessionId) return;
+
+  const ready = await getLocalStream(incoming.callType, {
+    skipPeerConnection: true,
   });
+  if (!ready) {
+    toast.error("Unable to access microphone or camera for this group call.");
+    wss.sendGroupCallReject({ sessionId: incoming.sessionId });
+    store.dispatch(setGroupCallIncoming(null));
+    store.dispatch(setGroupCallConnecting(false));
+    store.dispatch(clearGroupCallState());
+    store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+    return;
+  }
 
-  store.dispatch(setGroupCallActive(true));
+  groupCallContext.sessionId = incoming.sessionId;
+  groupCallContext.groupId = incoming.groupId;
+  groupCallContext.groupName = incoming.groupName;
+  groupCallContext.callType = incoming.callType || "audio";
+
+  store.dispatch(setGroupCallIncoming(null));
+  store.dispatch(
+    setGroupCallSession({
+      sessionId: incoming.sessionId,
+      groupId: incoming.groupId,
+      groupName: incoming.groupName,
+      callType: incoming.callType || "audio",
+    })
+  );
+  store.dispatch(setGroupCallConnecting(true));
   store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
-};
-
-export const connectToNewUser = (data) => {
-  const localStream = store.getState().call.localStream;
-
-  const call = myPeer.call(data.peerId, localStream);
-
-  call.on("stream", (incomingStream) => {
-    const streams = store.getState().call.groupCallStreams;
-    const stream = streams.find((stream) => stream.id === incomingStream.id);
-
-    if (!stream) {
-      addVideoStream(incomingStream);
+  wss.sendGroupCallAccept({ sessionId: incoming.sessionId }, (ack) => {
+    if (!ack?.ok) {
+      toast.error(ack?.error || "Unable to join group call.");
+      cleanupGroupCall();
+      store.dispatch(setGroupCallConnecting(false));
+      store.dispatch(setCallState(callStates.CALL_AVAILABLE));
     }
   });
 };
 
-export const leaveGroupCall = () => {
-  if (groupCallHost) {
-    wss.groupCallClosedByHost({
-      peerId: myPeerId,
-    });
-  } else {
-    wss.userLeftGroupCall({
-      streamId: store.getState().call.localStream.id,
-      roomId: groupCallRoomId,
-    });
+export const rejectIncomingGroupCallRequest = () => {
+  const incoming = getCallState().groupCallIncoming;
+  if (!incoming?.sessionId) return;
+
+  wss.sendGroupCallReject({ sessionId: incoming.sessionId });
+  store.dispatch(setGroupCallIncoming(null));
+  store.dispatch(clearGroupCallState());
+  store.dispatch(setGroupCallConnecting(false));
+  store.dispatch(setCallState(callStates.CALL_AVAILABLE));
+};
+
+export const handleGroupCallJoined = (data) => {
+  const localUserId = String(useAppStore.getState().userInfo?.id || "");
+  const localStream = getCallState().localStream;
+
+  groupCallContext.sessionId = data.sessionId;
+  groupCallContext.groupId = data.groupId;
+  groupCallContext.groupName = data.groupName;
+  groupCallContext.callType = data.callType || "audio";
+
+  store.dispatch(
+    setGroupCallSession({
+      sessionId: data.sessionId,
+      groupId: data.groupId,
+      groupName: data.groupName,
+      callType: data.callType,
+    })
+  );
+  store.dispatch(setGroupCallIncoming(null));
+  store.dispatch(
+    setGroupCallParticipants(
+      (data.participants || []).map((participant) =>
+        normalizeParticipant(
+          participant,
+          String(participant.userId) === localUserId ? localStream : null
+        )
+      )
+    )
+  );
+  store.dispatch(setGroupCallConnecting(false));
+  store.dispatch(setCallState(callStates.CALL_IN_PROGRESS));
+};
+
+export const handleGroupCallParticipants = (data) => {
+  const localUserId = String(useAppStore.getState().userInfo?.id || "");
+  const localStream = getCallState().localStream;
+
+  store.dispatch(
+    setGroupCallParticipants(
+      (data.participants || []).map((participant) =>
+        normalizeParticipant(
+          participant,
+          String(participant.userId) === localUserId ? localStream : null
+        )
+      )
+    )
+  );
+};
+
+export const handleGroupCallParticipantJoined = async ({ sessionId, participant }) => {
+  if (sessionId !== groupCallContext.sessionId || !participant?.userId) return;
+
+  store.dispatch(upsertGroupCallParticipant(normalizeParticipant(participant)));
+  await createOfferForParticipant(String(participant.userId));
+};
+
+export const handleGroupCallOffer = async ({ sessionId, senderUserId, offer }) => {
+  if (!offer || sessionId !== groupCallContext.sessionId || !senderUserId) return;
+
+  const peerConnection = createPeerConnection(String(senderUserId));
+  if (!peerConnection) return;
+
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  wss.sendGroupCallAnswer({
+    sessionId,
+    targetUserId: senderUserId,
+    answer: serializeSessionDescription(answer),
+  });
+
+  await flushPendingCandidates(String(senderUserId));
+};
+
+export const handleGroupCallAnswer = async ({ sessionId, senderUserId, answer }) => {
+  if (!answer || sessionId !== groupCallContext.sessionId || !senderUserId) return;
+
+  const peerConnection = groupCallContext.peerConnections.get(String(senderUserId));
+  if (!peerConnection) return;
+
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+  await flushPendingCandidates(String(senderUserId));
+};
+
+export const handleGroupCallCandidate = async ({
+  sessionId,
+  senderUserId,
+  candidate,
+}) => {
+  if (!candidate || sessionId !== groupCallContext.sessionId || !senderUserId) return;
+
+  const rtcCandidate = new RTCIceCandidate(candidate);
+  const peerConnection = groupCallContext.peerConnections.get(String(senderUserId));
+
+  if (!peerConnection || !peerConnection.remoteDescription) {
+    queueCandidate(String(senderUserId), rtcCandidate);
+    return;
   }
-  clearGroupData();
-};
 
-export const clearGroupData = () => {
-  groupCallRoomId = null;
-  groupCallHost = null;
-  store.dispatch(clearGroupCallData());
-  myPeer.destroy();
-  connectWithMyPeer();
-
-  const localStream = store.getState().call.localStream;
-  localStream.getVideoTracks()[0].enabled = true;
-  localStream.getAudioTracks()[0].enabled = true;
-};
-
-export const removeInactiveStream = (data) => {
-  const groupCallStreams = store
-    .getState()
-    .call.groupCallStreams.filter((stream) => stream.id !== data.streamId);
-  store.dispatch(setGroupCallIncomingStreams(groupCallStreams));
-};
-
-const addVideoStream = (incomingStream) => {
-  const groupCallStreams = [
-    ...store.getState().call.groupCallStreams,
-    incomingStream,
-  ];
-
-  store.dispatch(setGroupCallIncomingStreams(groupCallStreams));
-};
-
-// if group call is active return roomId if not return false
-export const checkActiveGroupCall = () => {
-  if (store.getState().call.groupCallActive) {
-    return groupCallRoomId;
-  } else {
-    return false;
+  try {
+    await peerConnection.addIceCandidate(rtcCandidate);
+  } catch (error) {
+    console.error("Error adding group ICE candidate:", error);
   }
+};
+
+export const handleGroupCallParticipantLeft = ({ sessionId, userId }) => {
+  if (sessionId !== groupCallContext.sessionId || !userId) return;
+
+  destroyPeerConnection(String(userId));
+  store.dispatch(removeGroupCallParticipant(String(userId)));
+};
+
+export const handleGroupCallEnded = ({ sessionId, reason }) => {
+  if (sessionId && sessionId !== groupCallContext.sessionId) return;
+
+  cleanupGroupCall();
+  if (reason && reason !== "left") {
+    toast.info(
+      reason === "disconnect"
+        ? "Group call ended because participants disconnected."
+        : "Group call ended."
+    );
+  }
+};
+
+export const leaveCurrentGroupCall = () => {
+  if (!groupCallContext.sessionId) {
+    if (getCallState().groupCallConnecting) {
+      groupCallContext.cancelRequestedBeforeStart = true;
+      cleanupGroupCall();
+    }
+    return;
+  }
+
+  wss.sendGroupCallLeave({ sessionId: groupCallContext.sessionId });
+  cleanupGroupCall();
 };

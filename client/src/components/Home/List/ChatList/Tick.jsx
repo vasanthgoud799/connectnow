@@ -11,7 +11,7 @@ function Tick(props){
                 version="1.1"
                 x="0px"
                 y="0px"
-                enable-background="new 0 0 18 18"
+                enableBackground="new 0 0 18 18"
               >
                 <title>status-dblcheck</title>
                 <path

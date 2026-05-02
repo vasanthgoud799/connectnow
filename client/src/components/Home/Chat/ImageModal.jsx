@@ -1,36 +1,35 @@
-// src/components/ImageModal.jsx
 import React from "react";
-import { motion } from "framer-motion"; // Import framer-motion for animations
+import { motion } from "framer-motion";
+import { X } from "lucide-react";
 
 function ImageModal({ isOpen, onClose, imageUrl }) {
   if (!isOpen) return null;
 
   return (
     <motion.div
-      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50"
-      initial={{ opacity: 0 }} // Initial opacity
-      animate={{ opacity: 1 }} // Animate to full opacity
-      exit={{ opacity: 0 }} // Animate back to opacity 0 on exit
-      transition={{ duration: 0.3 }} // Transition duration
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
     >
       <motion.div
-        className="bg-white rounded-lg shadow-lg overflow-hidden"
-        initial={{ scale: 0.8 }} // Start scale at 0.8
-        animate={{ scale: 1 }} // Animate to full scale
-        exit={{ scale: 0.8 }} // Scale back down on exit
-        transition={{ duration: 0.3 }} // Transition duration
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.92 }}
+        className="relative max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-[28px] border border-white/10 bg-[#0b1120] shadow-[0_30px_80px_rgba(0,0,0,0.5)]"
       >
-        <span
-          className="absolute top-2 right-2 cursor-pointer text-lg"
+        <button
+          type="button"
+          className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white transition hover:bg-black/60"
           onClick={onClose}
         >
-          ✖️
-        </span>
-        <div className="w-[90%] max-w-[400px] h-[300px] mx-auto overflow-hidden">
+          <X className="h-4 w-4" />
+        </button>
+        <div className="flex items-center justify-center p-4">
           <img
             src={imageUrl}
-            alt="Profile"
-            className="w-full h-full object-cover" // Use object-cover to maintain aspect ratio
+            alt="Preview"
+            className="max-h-[82vh] w-auto rounded-[20px] object-contain"
           />
         </div>
       </motion.div>

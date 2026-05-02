@@ -1,63 +1,86 @@
-// src/components/Home/Chat/AttachmentMenu.jsx
-import React from 'react';
+import React from "react";
+import { BarChart3, CalendarClock, FileText, ImageIcon, Mic, Video } from "lucide-react";
 
-const AttachmentMenu = ({ onAttach }) => {
-  const menuItems = [
-    {
-      label: 'Photos',
-      imageSrc: './stickers.png',
-      type: 'image',
-    },
-    {
-      label: 'Videos',
-      imageSrc: './Cam.png',
-      type: 'video',
-    },
-    {
-      label: 'Audio',
-      imageSrc: './mic.png',
-      type: 'audio',
-    },
-    {
-      label: 'Document',
-      imageSrc: './document.png',
-      type: 'document',
-    },
-  ];
+const menuItems = [
+  {
+    label: "Photos",
+    icon: ImageIcon,
+    type: "image",
+  },
+  {
+    label: "Videos",
+    icon: Video,
+    type: "video",
+  },
+  {
+    label: "Audio",
+    icon: Mic,
+    type: "audio",
+  },
+  {
+    label: "Document",
+    icon: FileText,
+    type: "document",
+  },
+  {
+    label: "Poll",
+    icon: BarChart3,
+    type: "poll",
+  },
+  {
+    label: "Schedule",
+    icon: CalendarClock,
+    type: "schedule",
+  },
+];
 
+function AttachmentMenu({ onAttach, onCreatePoll, onCreateSchedule }) {
   const handleFileInput = (type) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = type === 'document' ? 'application/*' : `${type}/*`;
+    if (type === "poll") {
+      onCreatePoll?.();
+      return;
+    }
+
+    if (type === "schedule") {
+      onCreateSchedule?.();
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = type === "document" ? "*/*" : `${type}/*`;
     input.onchange = (event) => {
-      const file = event.target.files[0];
+      const file = event.target.files?.[0];
       if (file) {
-        onAttach(file, type); // Pass both file and type
+        onAttach(file, type);
       }
     };
     input.click();
   };
 
   return (
-    <div className="absolute bottom-11 right-4 bg-gray-800 rounded-lg shadow-xl p-2 flex flex-col w-[150px] gap-1">
-      {menuItems.map((item, index) => (
-        <div
-          key={index}
-          className="flex items-center gap-1 p-2 hover:bg-gray-700 rounded-md transition-all duration-200 ease-in-out cursor-pointer"
-          onClick={() => handleFileInput(item.type)}
-        >
-          <img
-            src={item.imageSrc}
-            alt={item.label}
-            className="w-8 h-8 object-contain"
-          />
-          <span className="text-sm font-semibold text-slate-200">
-            {item.label}
-          </span>
-        </div>
-      ))}
+    <div className="themed-attachment-menu w-[184px] rounded-[22px] p-2 shadow-[0_22px_60px_rgba(2,8,23,0.24)]">
+      <div className="flex flex-col gap-1">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <button
+              key={item.type}
+              type="button"
+              className="themed-attachment-item flex items-center gap-3 rounded-2xl px-3 py-3 text-left transition"
+              onClick={() => handleFileInput(item.type)}
+            >
+              <div className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl">
+                <Icon className="themed-attachment-icon h-5 w-5" />
+              </div>
+              <span className="text-sm font-semibold">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
-};
+}
 
 export default AttachmentMenu;

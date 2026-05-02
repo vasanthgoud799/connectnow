@@ -1,0 +1,26 @@
+{
+  "name": "ConnectNow",
+  "short_name": "ConnectNow",
+  "description": "AI-powered realtime messaging, calls, groups, and premium automation in one installable app.",
+  "start_url": "/auth",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "categories": ["social", "communication", "productivity"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
