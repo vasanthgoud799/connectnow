@@ -12,6 +12,61 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { Camera, Copy, ShieldCheck, UserRound } from "lucide-react";
 import { ensureUserE2EEIdentity, getLocalIdentitySummary } from "@/crypto/e2eeService";
 
+async function compressProfileImageIfNeeded(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) {
+    return file;
+  }
+
+  if (file.size <= 1024 * 1024) {
+    return file;
+  }
+
+  const previewUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = previewUrl;
+    });
+
+    const maxDimension = 1280;
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const targetWidth = Math.max(1, Math.round(image.width * scale));
+    const targetHeight = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      return file;
+    }
+
+    context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.84)
+    );
+
+    if (!blob || blob.size >= file.size) {
+      return file;
+    }
+
+    const nextName = file.name.replace(/\.[^.]+$/, "") || "profile";
+    return new File([blob], `${nextName}.jpg`, {
+      type: "image/jpeg",
+      lastModified: Date.now(),
+    });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(previewUrl);
+  }
+}
+
 function Profile() {
   const { userInfo, setUserInfo } = useAppStore();
   const { user: clerkUser } = useUser();
@@ -111,15 +166,13 @@ function Profile() {
   };
 
   const uploadProfileImage = async (file) => {
+    const preparedFile = await compressProfileImageIfNeeded(file);
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", preparedFile);
     formData.append("stableMedia", "true");
 
     const response = await apiClient.post(UPLOAD_FILE_ROUTE, formData, {
       withCredentials: true,
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
     });
 
     return response.data;
@@ -157,7 +210,12 @@ function Profile() {
           "Error updating profile:",
           error.response?.data?.message || error.message
         );
-        toast.error(error.response?.data?.message || "Failed to update profile");
+        toast.error(
+          error.response?.data?.message ||
+            (imageFile
+              ? "Profile photo upload failed. Try a smaller image and save again."
+              : "Failed to update profile")
+        );
       }
     }
   };

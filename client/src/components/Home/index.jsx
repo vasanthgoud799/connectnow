@@ -758,7 +758,7 @@ function Home({ activeUsers = [], callState }) {
                                 animate={{ x: 0, opacity: 1 }}
                                 exit={{ x: 36, opacity: 0 }}
                                 transition={{ duration: 0.2 }}
-                                className="absolute inset-0 z-30 overflow-hidden bg-[#08111f]"
+                                className="absolute inset-0 z-[80] overflow-hidden bg-[#08111f]"
                               >
                                 {isDetailVisible && (
                                   <Suspense fallback={<RouteLoader message="Loading chat details..." />}>
