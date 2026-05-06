@@ -37,6 +37,10 @@ import { registerNewUser } from "@/utils/wssConnection/wssConnection";
 import { useSocket } from "@/context/SocketContext";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import RouteLoader from "@/components/ui/RouteLoader";
+import {
+  getFocusCallFromNotificationEventName,
+  getOpenChatFromNotificationEventName,
+} from "@/utils/browserNotifications";
 
 const Chat = lazy(() => import("./Chat"));
 const Detail = lazy(() => import("./Detail"));
@@ -64,6 +68,8 @@ function Home({ activeUsers = [], callState }) {
     setFocusedMessageId,
     chatSummaries,
     selectedChatData,
+    setActiveHomeSection: setStoredActiveHomeSection,
+    setMobileChatView: setStoredMobileChatView,
   } = useAppStore();
   const navigate = useNavigate();
   const socket = useSocket();
@@ -83,10 +89,26 @@ function Home({ activeUsers = [], callState }) {
   const previousSectionRef = useRef(activeSection);
 
   useEffect(() => {
+    document.body.classList.add("app-shell-body");
+
+    return () => {
+      document.body.classList.remove("app-shell-body");
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isMobile) {
       setMobileChatView("chat");
     }
   }, [isMobile]);
+
+  useEffect(() => {
+    setStoredActiveHomeSection(activeSection);
+  }, [activeSection, setStoredActiveHomeSection]);
+
+  useEffect(() => {
+    setStoredMobileChatView(mobileChatView);
+  }, [mobileChatView, setStoredMobileChatView]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -150,14 +172,6 @@ function Home({ activeUsers = [], callState }) {
     const handleNotificationCreated = ({ notification, unreadCount }) => {
       addNotification(notification, unreadCount);
 
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification("ConnectNow", {
-          body:
-            notification.meta?.messagePreview ||
-            notification.meta?.groupName ||
-            notification.type.replace(/_/g, " "),
-        });
-      }
     };
 
     const handleNotificationRead = ({ notificationId, unreadCount }) => {
@@ -234,6 +248,56 @@ function Home({ activeUsers = [], callState }) {
     socket,
     userInfo,
   ]);
+
+  useEffect(() => {
+    const handleOpenConversation = (event) => {
+      const payload = event?.detail?.payload;
+      const messageId = event?.detail?.messageId;
+      if (!payload) return;
+
+      setActiveSection("chats");
+      setSelectedChatData(payload);
+      setFocusedMessageId(messageId || undefined);
+      if (isMobile) {
+        setForceOpenMobileChat(true);
+        setMobileChatView("chat");
+      }
+      setIsGlobalSearchOpen(false);
+      setIsNotificationsOpen(false);
+      setIsDetailVisible(false);
+      setIsSearchVisible(false);
+    };
+
+    const handleFocusCall = () => {
+      setActiveSection("chats");
+      if (isMobile) {
+        setForceOpenMobileChat(true);
+        setMobileChatView("chat");
+      }
+      setIsGlobalSearchOpen(false);
+      setIsNotificationsOpen(false);
+    };
+
+    window.addEventListener(
+      getOpenChatFromNotificationEventName(),
+      handleOpenConversation
+    );
+    window.addEventListener(
+      getFocusCallFromNotificationEventName(),
+      handleFocusCall
+    );
+
+    return () => {
+      window.removeEventListener(
+        getOpenChatFromNotificationEventName(),
+        handleOpenConversation
+      );
+      window.removeEventListener(
+        getFocusCallFromNotificationEventName(),
+        handleFocusCall
+      );
+    };
+  }, [isMobile, setFocusedMessageId, setSelectedChatData]);
 
   useEffect(() => {
     if (!userInfo.profileSetUp) {
@@ -577,7 +641,7 @@ function Home({ activeUsers = [], callState }) {
   };
 
   return (
-    <div className="themed-shell relative min-h-screen w-full overflow-hidden">
+    <div className="themed-shell mobile-app-shell relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden">
       {isLoggingOut && (
         <div className="absolute inset-0 z-[140] flex items-center justify-center bg-[#07111f]/95 px-6 text-white">
           <div className="glass-panel rounded-[28px] px-8 py-6 text-center">
@@ -862,7 +926,7 @@ function Home({ activeUsers = [], callState }) {
               </div>
 
               <div
-                className={`grid h-[74px] grid-cols-5 border-t border-white/8 bg-[#060a14]/95 md:hidden ${
+                className={`grid h-[calc(74px+env(safe-area-inset-bottom))] grid-cols-5 border-t border-white/8 bg-[#060a14]/95 pb-[env(safe-area-inset-bottom)] md:hidden ${
                   activeSection === "chats" && mobileChatView === "chat" ? "hidden" : ""
                 }`}
               >

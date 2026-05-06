@@ -3289,7 +3289,7 @@ function Chat({
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none touch-pan-y">
       <div
         className={`relative z-40 flex items-center justify-between border-b border-white/8 backdrop-blur-xl ${
           isMobile ? "h-[74px] px-3" : "h-[88px] px-7"
@@ -3855,7 +3855,7 @@ function Chat({
               }
             }}
             disabled={!isGroupChat && (isUserBlocked() || !canMessageDirectUser)}
-            className={`themed-input ${isMobile ? "h-12 px-5 text-[15px]" : "h-[52px] px-6"} rounded-full`}
+            className={`themed-input ${isMobile ? "h-12 px-5 text-base" : "h-[52px] px-6"} rounded-full`}
           />
 
           {aiEnabled && !isPremiumUser && !isMobile && (

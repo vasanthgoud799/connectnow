@@ -25,6 +25,10 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import RouteLoader from "@/components/ui/RouteLoader";
 import { toast } from "sonner";
+import {
+  isBrowserNotificationSupported,
+  requestBrowserNotificationPermission,
+} from "@/utils/browserNotifications";
 
 const PremiumUpgradeModal = lazy(() => import("../PremiumUpgradeModal"));
 
@@ -38,12 +42,15 @@ function SettingsPage() {
     securityEvents,
     adminDashboard,
     fetchSecuritySnapshot,
+    browserNotificationsEnabled,
+    setBrowserNotificationsEnabled,
   } = useAppStore();
   const [aiEnabled, setAiEnabled] = useState(Boolean(userInfo?.aiPreferences?.enabled));
   const [translationLanguage, setTranslationLanguage] = useState(
     userInfo?.aiPreferences?.translationLanguage || "English"
   );
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const browserNotificationsSupported = isBrowserNotificationSupported();
 
   const subscription = userInfo?.subscription || { plan: "free", expiresAt: null };
   const isPremiumUser =
@@ -164,6 +171,33 @@ function SettingsPage() {
     }
   };
 
+  const handleBrowserNotificationToggle = async (checked) => {
+    if (!browserNotificationsSupported) {
+      toast.error("Browser notifications are not supported on this device.");
+      return;
+    }
+
+    if (!checked) {
+      setBrowserNotificationsEnabled(false);
+      toast.success("Browser notifications turned off.");
+      return;
+    }
+
+    const permission =
+      Notification.permission === "granted"
+        ? "granted"
+        : await requestBrowserNotificationPermission();
+
+    if (permission !== "granted") {
+      setBrowserNotificationsEnabled(false);
+      toast.error("Allow browser notifications to enable message and call alerts.");
+      return;
+    }
+
+    setBrowserNotificationsEnabled(true);
+    toast.success("Browser notifications turned on.");
+  };
+
   return (
  <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-4 overflow-y-auto no-scrollbar">
       <div className="themed-page-card rounded-[28px] p-4 md:p-5">
@@ -185,14 +219,29 @@ function SettingsPage() {
         </button>
 
         <div className="themed-panel-soft themed-card-hover rounded-[24px] p-5">
-          <div className="flex items-center gap-3">
-            <div className="themed-icon-chip">
-              <Bell className="h-5 w-5" />
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="themed-icon-chip">
+                <Bell className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="themed-title font-medium">Notifications</p>
+                <p className="themed-subtitle mt-3 text-sm">
+                  Get browser alerts for new messages and incoming calls when the chat is not in front.
+                </p>
+              </div>
             </div>
-            <p className="themed-title font-medium">Notifications</p>
+            <Switch
+              checked={browserNotificationsEnabled}
+              onCheckedChange={handleBrowserNotificationToggle}
+            />
           </div>
-          <p className="themed-subtitle mt-3 text-sm">
-            In-app toasts are enabled. Browser push can be added next.
+          <p className="themed-subtitle mt-3 text-xs">
+            {browserNotificationsSupported
+              ? browserNotificationsEnabled
+                ? "Browser notifications are enabled for messages and calls."
+                : "Enable notifications to get desktop or mobile browser alerts."
+              : "This browser does not support notifications."}
           </p>
         </div>
 

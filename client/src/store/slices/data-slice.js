@@ -39,6 +39,8 @@ export const createDataSlice = (set, get) => ({
   adminDashboard: null,
   securitySnapshotLoaded: false,
   securitySnapshotLoading: false,
+  activeHomeSection: "chats",
+  mobileChatView: "chat",
 
   invalidateChatSummaries: () =>
     set({ chatSummariesLoaded: false, chatSummariesLoading: false }),
@@ -50,6 +52,8 @@ export const createDataSlice = (set, get) => ({
     set({ callsLoaded: false, callsLoading: false }),
   invalidateSecuritySnapshot: () =>
     set({ securitySnapshotLoaded: false, securitySnapshotLoading: false }),
+  setActiveHomeSection: (activeHomeSection) => set({ activeHomeSection }),
+  setMobileChatView: (mobileChatView) => set({ mobileChatView }),
 
   fetchChatSummaries: async ({ force = false, currentUserId } = {}) => {
     const state = get();

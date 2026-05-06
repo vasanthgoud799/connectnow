@@ -20,7 +20,7 @@ function UserInfo({
 
   return (
     <>
-    <header className="themed-topbar border-b px-4 py-3 md:px-6">
+    <header className="themed-topbar border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-6">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <img

@@ -4,6 +4,11 @@ import * as dashboardActions from "../../store/actions/dashboardActions";
 import * as webRTCHandler from "../webRTC/webRTCHandler";
 import * as groupCallHandler from "../webRTC/webRTCGroupCallHandler";
 import { ensureUserE2EEIdentity } from "../../crypto/e2eeService";
+import {
+  dispatchFocusCallFromNotification,
+  showBrowserNotification,
+} from "../browserNotifications";
+import { isDirectCallVisible } from "../../store/actions/callActions";
 
 const broadcastEventTypes = {
   ACTIVE_USERS: "ACTIVE_USERS",
@@ -61,6 +66,26 @@ const attachSocketListeners = (nextSocket) => {
   };
 
   const handlePreOffer = (data) => {
+    const { browserNotificationsEnabled } = useAppStore.getState();
+    const callState = store.getState().call;
+    const shouldShowIncomingCallNotification =
+      browserNotificationsEnabled &&
+      document.visibilityState !== "visible" &&
+      !isDirectCallVisible(callState?.callState);
+
+    if (shouldShowIncomingCallNotification) {
+      showBrowserNotification({
+        title: data?.callerUsername || "Incoming call",
+        body: `Incoming ${data?.callType === "video" ? "video" : "audio"} call`,
+        tag: `call:${data?.sessionId || data?.callerUserId || "incoming"}`,
+        data: {
+          callType: data?.callType,
+          callerUserId: data?.callerUserId,
+        },
+        onClick: () => dispatchFocusCallFromNotification(data),
+      });
+    }
+
     webRTCHandler.handlePreOffer(data);
   };
 
