@@ -880,10 +880,10 @@ function Home({ activeUsers = [], callState }) {
                           transition={{ duration: 0.24 }}
                           className="relative flex min-h-0 w-full max-w-full flex-1 overflow-hidden"
                         >
-                          <div className="themed-main-panel themed-chat-canvas relative flex-1 overflow-hidden">
-                            <Suspense fallback={<RouteLoader message="Loading chat..." />}>
-                              <Chat
-                                isMobile
+                        <div className="themed-main-panel themed-chat-canvas relative min-h-0 flex-1 overflow-hidden">
+                          <Suspense fallback={<RouteLoader message="Loading chat..." />}>
+                            <Chat
+                              isMobile
                                 onBack={returnToMobileChatList}
                                 onToggleDetail={toggleDetail}
                                 onToggleSearch={toggleSearch}
@@ -933,7 +933,7 @@ function Home({ activeUsers = [], callState }) {
                         transition={{ duration: 0.4, delay: 0.08 }}
                         className="flex min-w-0 flex-1"
                       >
-                        <div className="themed-main-panel themed-chat-canvas relative flex-1">
+                        <div className="themed-main-panel themed-chat-canvas relative min-h-0 flex-1">
                           <Suspense fallback={<RouteLoader message="Loading chat..." />}>
                             <Chat onToggleDetail={toggleDetail} onToggleSearch={toggleSearch} />
                           </Suspense>
