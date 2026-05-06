@@ -412,7 +412,7 @@ function CallsPage({ activeUsers = [], callState }) {
         onCall={startDirectCall}
       />
 
-      {loadingContacts && (
+      {contactsLoading && (
         <div className="pointer-events-none fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-950/80 px-4 py-2 text-xs text-white shadow-lg backdrop-blur-sm">
           Loading contacts...
         </div>
