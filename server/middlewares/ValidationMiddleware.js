@@ -116,6 +116,8 @@ export const validateMessageConversationRequest = validator((req) => ({
   conversation: {
     userId: asOptionalObjectId(req.body?.id || req.body?.userId),
     groupId: asOptionalObjectId(req.body?.groupId),
+    before: req.body?.before ? new Date(req.body.before) : null,
+    limit: Math.min(Math.max(Number(req.body?.limit) || 50, 1), 100),
   },
 }));
 

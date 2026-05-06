@@ -1,21 +1,21 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
   BellOff,
-  Trash2,
   MessageSquareMore,
-  MoreHorizontal,
   Pin,
   Plus,
   Search,
   Star,
+  Trash2,
   UsersRound,
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import AddUser from "./AddUser";
-import CreateGroup from "./CreateGroup";
+import VirtualStack from "@/components/ui/VirtualStack";
+import RouteLoader from "@/components/ui/RouteLoader";
+import ChatListItem from "./ChatListItem";
 import { useAppStore } from "@/store";
 import { apiClient } from "@/lib/api-client.js";
 import {
@@ -28,6 +28,9 @@ import {
   decryptChatSummaries,
   hydrateChatSummariesFromCache,
 } from "@/crypto/e2eeService";
+
+const AddUser = lazy(() => import("./AddUser"));
+const CreateGroup = lazy(() => import("./CreateGroup"));
 
 const CHAT_TABS = ["All", "Unread", "Groups", "Favorites"];
 let latestChatLoadRequestId = 0;
@@ -83,8 +86,9 @@ function ChatList() {
       setChatSummaries([]);
       setIsLoading(false);
     } finally {
-      if (requestId !== latestChatLoadRequestId) return;
-      setIsLoading(false);
+      if (requestId === latestChatLoadRequestId) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -237,7 +241,7 @@ function ChatList() {
         </button>
         </div>
 
-        <div className="space-y-3 pr-1 no-scrollbar scroll-smooth md:min-h-0 md:flex-1 md:overflow-y-auto">
+        <div className="pr-1 md:min-h-0 md:flex-1">
           {isLoading ? (
             <div className="themed-panel-soft themed-subtitle rounded-[24px] px-4 py-8 text-center">
               Loading conversations...
@@ -251,103 +255,43 @@ function ChatList() {
               </p>
             </div>
           ) : (
-            filteredChats.map((chat) => {
-              const participant = chat.participant || {};
-              const isGroup = chat.chatType === "group";
-              const group = chat.group || {};
-              const title =
-                chat.title ||
-                group.name ||
-                [participant.firstName, participant.lastName]
-                  .filter(Boolean)
-                  .join(" ") ||
-                participant.email;
-              const subtitle =
-                chat.lastMessage?.content ||
-                (isGroup ? group.description || "Tap to start group chatting" : "Tap to start chatting");
-              const avatar = isGroup
-                ? group.image || "/avatar.png"
-                : participant.image || "/avatar.png";
-              const isActive = selectedConversationKey === chat.conversationKey;
-              const isMuted =
-                chat.mutedUntil && new Date(chat.mutedUntil).getTime() > Date.now();
+            <VirtualStack
+              className="h-[calc(100dvh-22rem)] min-h-[260px] overflow-y-auto no-scrollbar scroll-smooth md:h-full"
+              contentClassName="space-y-3"
+              estimateSize={() => 92}
+              getItemKey={(chat) => chat.conversationKey}
+              items={filteredChats}
+              overscan={8}
+              renderItem={(chat) => {
+                const participant = chat.participant || {};
+                const isGroup = chat.chatType === "group";
+                const group = chat.group || {};
 
-              return (
-                <div
-                  key={chat.conversationKey}
-                  className={`themed-conversation-card relative flex items-center gap-3 overflow-visible rounded-[26px] p-3 ${
-                    isActive ? "z-40 themed-conversation-card-active" : "z-0"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                    onClick={() => {
-                      setSelectedChatData(
-                        isGroup
-                          ? {
-                              _id: group._id,
-                              id: group._id,
-                              name: group.name,
-                              description: group.description,
-                              image: group.image,
-                              members: group.members,
-                              memberCount: group.memberCount || group.members?.length || 0,
-                              inviteToken: group.inviteToken,
-                              isGroup: true,
-                              conversationKey: chat.conversationKey,
-                            }
-                          : participant
-                      );
-                      setUnreadCount(chat.conversationKey, 0);
-                    }}
-                  >
-                    <img
-                      src={avatar}
-                      alt="avatar"
-                      className="themed-glow-avatar h-14 w-14 rounded-full object-cover"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="themed-title truncate text-[1.03rem] font-semibold">
-                            {title}
-                          </span>
-                          {Boolean(chat.favorite) && (
-                            <Star className="h-3.5 w-3.5 fill-current text-amber-300" />
-                          )}
-                          {Number(chat.pinnedOrder || 0) > 0 && (
-                            <Pin className="h-3.5 w-3.5 text-cyan-300" />
-                          )}
-                          {isMuted && <BellOff className="h-3.5 w-3.5 text-slate-400" />}
-                        </div>
-                        {chat.lastMessage?.timestamp && (
-                          <span className="themed-subtitle shrink-0 text-[11px]">
-                            {new Date(chat.lastMessage.timestamp).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex items-center justify-between gap-3">
-                        <p className="themed-subtitle truncate text-[0.95rem]">
-                          {subtitle}
-                        </p>
-                        {chat.unreadCount > 0 && (
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-cyan-400 px-1.5 text-[10px] font-semibold text-slate-950">
-                            {chat.unreadCount}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-
-                  <div className="relative z-20 shrink-0">
-                    <button
-                      type="button"
-                      className="themed-panel-soft rounded-full p-2"
-                      onClick={(event) => {
+                return (
+                  <div className="pb-3">
+                    <ChatListItem
+                      chat={chat}
+                      isActive={selectedConversationKey === chat.conversationKey}
+                      onOpenChat={() => {
+                        setSelectedChatData(
+                          isGroup
+                            ? {
+                                _id: group._id,
+                                id: group._id,
+                                name: group.name,
+                                description: group.description,
+                                image: group.image,
+                                members: group.members,
+                                memberCount: group.memberCount || group.members?.length || 0,
+                                inviteToken: group.inviteToken,
+                                isGroup: true,
+                                conversationKey: chat.conversationKey,
+                              }
+                            : participant
+                        );
+                        setUnreadCount(chat.conversationKey, 0);
+                      }}
+                      onOpenMenu={(event) => {
                         const rect = event.currentTarget.getBoundingClientRect();
                         const menuWidth = 208;
                         const menuHeight = 236;
@@ -368,13 +312,11 @@ function ChatList() {
                           current === chat.conversationKey ? null : chat.conversationKey
                         );
                       }}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
+                    />
                   </div>
-                </div>
-              );
-            })
+                );
+              }}
+            />
           )}
         </div>
       </div>
@@ -468,25 +410,29 @@ function ChatList() {
 
       {showAddUser &&
         createPortal(
-          <AddUser
-            onFriendAdded={() => {
-              loadChats();
-              setShowAddUser(false);
-            }}
-            onClose={() => setShowAddUser(false)}
-          />,
+          <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
+            <AddUser
+              onFriendAdded={() => {
+                loadChats();
+                setShowAddUser(false);
+              }}
+              onClose={() => setShowAddUser(false)}
+            />
+          </Suspense>,
           document.body
         )}
 
       {showCreateGroup &&
         createPortal(
-          <CreateGroup
-            onClose={() => setShowCreateGroup(false)}
-            onCreated={() => {
-              loadChats();
-              setShowCreateGroup(false);
-            }}
-          />,
+          <Suspense fallback={<RouteLoader message="Loading group creator..." />}>
+            <CreateGroup
+              onClose={() => setShowCreateGroup(false)}
+              onCreated={() => {
+                loadChats();
+                setShowCreateGroup(false);
+              }}
+            />
+          </Suspense>,
           document.body
         )}
     </div>

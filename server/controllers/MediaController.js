@@ -1,9 +1,14 @@
 import Group from "../models/GroupModel.js";
+import Message from "../models/MessagesModel.js";
 import User from "../models/UserModel.js";
 import {
   createSignedMediaUrl,
   createSignedUploadIntent,
 } from "../services/MediaStorageService.js";
+import { verifySignedMediaAccessToken } from "../utils/AuthSecurity.js";
+import { createReadStream, existsSync } from "fs";
+import path from "path";
+import { logRuntimeEvent } from "../utils/RuntimeLogger.js";
 
 const buildEntityMediaEtag = ({ storageProvider, storageBucket, storagePath, image }) =>
   `"${[storageProvider || "local", storageBucket || "", storagePath || image || ""].join(":")}"`;
@@ -140,5 +145,91 @@ export const createUploadIntent = async (req, res) => {
   } catch (error) {
     console.error("Error creating upload intent:", error.message);
     return res.status(500).json({ message: "Unable to create upload intent." });
+  }
+};
+
+export const getMessageMedia = async (req, res) => {
+  try {
+    const token = String(req.query?.token || "");
+    if (!token) {
+      logRuntimeEvent("warn", "media.access.denied", {
+        reason: "missing_media_token",
+        messageId: String(req.params?.messageId || ""),
+      });
+      return res.status(401).json({ message: "Missing media token." });
+    }
+
+    const payload = verifySignedMediaAccessToken(token);
+    const messageId = String(req.params?.messageId || "");
+
+    if (
+      !payload?.messageId ||
+      String(payload.messageId) !== messageId ||
+      payload.scope !== "media_access"
+    ) {
+      logRuntimeEvent("warn", "media.access.denied", {
+        reason: "invalid_media_token",
+        messageId,
+      });
+      return res.status(403).json({ message: "Invalid media token." });
+    }
+
+    const message = await Message.findById(messageId).select(
+      "storageProvider storagePath storageBucket fileUrl mediaEncryption"
+    );
+
+    if (!message?.storagePath || String(message.storagePath) !== String(payload.storagePath || "")) {
+      logRuntimeEvent("warn", "media.access.denied", {
+        reason: "media_not_found_or_mismatch",
+        messageId,
+      });
+      return res.status(404).json({ message: "Media not found." });
+    }
+
+    if (message.storageProvider === "supabase") {
+      const signedUrl = await createSignedMediaUrl({
+        storageProvider: message.storageProvider,
+        storagePath: message.storagePath,
+        storageBucket: message.storageBucket,
+        expiresIn: Number(process.env.MEDIA_URL_TTL_SECONDS || 300),
+      });
+
+      if (!signedUrl) {
+        logRuntimeEvent("warn", "media.access.denied", {
+          reason: "signed_url_missing",
+          messageId,
+        });
+        return res.status(404).json({ message: "Media not found." });
+      }
+
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.redirect(signedUrl);
+    }
+
+    const uploadsRoot = path.resolve(process.cwd(), "uploads", "files");
+    const absolutePath = path.resolve(process.cwd(), decodeURIComponent(String(message.storagePath || "")));
+
+    if (!absolutePath.startsWith(uploadsRoot) || !existsSync(absolutePath)) {
+      logRuntimeEvent("warn", "media.access.denied", {
+        reason: "local_media_missing",
+        messageId,
+      });
+      return res.status(404).json({ message: "Media not found." });
+    }
+
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader(
+      "Content-Type",
+      message.mediaEncryption?.originalMimeType || "application/octet-stream"
+    );
+    return createReadStream(absolutePath).pipe(res);
+  } catch (error) {
+    logRuntimeEvent("warn", "media.access.failed", {
+      reason: "unexpected_media_error",
+      messageId: String(req.params?.messageId || ""),
+      message: error.message,
+    });
+    console.error("Error loading message media:", error.message);
+    return res.status(401).json({ message: "Unable to load media." });
   }
 };

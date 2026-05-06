@@ -3,6 +3,7 @@ import {
   getRequestFingerprint,
   logSecurityEvent,
 } from "../utils/AuthSecurity.js";
+import { logRuntimeEvent } from "../utils/RuntimeLogger.js";
 
 const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
 const forbiddenKeyPattern = /(^\$)|(\.)/;
@@ -36,8 +37,24 @@ export const securityHeaders = (req, res, next) => {
 };
 
 export const attachRequestContext = (req, res, next) => {
+  req.requestStartedAt = Date.now();
   req.requestFingerprint = getRequestFingerprint(req);
   res.setHeader("X-Request-Fingerprint", req.requestFingerprint);
+  return next();
+};
+
+export const trackRequestLatency = (req, res, next) => {
+  res.on("finish", () => {
+    logRuntimeEvent("info", "http.request.completed", {
+      method: req.method,
+      path: req.originalUrl,
+      statusCode: res.statusCode,
+      latencyMs: Date.now() - Number(req.requestStartedAt || Date.now()),
+      requestFingerprint: req.requestFingerprint,
+      userId: req.userId || null,
+    });
+  });
+
   return next();
 };
 

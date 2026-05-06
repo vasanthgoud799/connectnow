@@ -10,6 +10,7 @@ import {
   editMessage,
   getConversationKey,
   hydrateMessageMediaForUser,
+  markMessageDelivered,
   markConversationSeen,
   markMessagesDelivered,
   reactToMessage,
@@ -18,6 +19,8 @@ import {
   toggleStarredMessage,
   voteOnPollMessage,
 } from "./services/MessageService.js";
+import { configureSocketRedisAdapter } from "./services/SocketRedisAdapter.js";
+import { realtimeState } from "./services/DistributedRealtimeService.js";
 import {
   createNotification,
   getUnreadNotificationCount,
@@ -33,6 +36,7 @@ import {
   validateSessionRecord,
   verifyAppJwt,
 } from "./utils/AuthSecurity.js";
+import { logRuntimeEvent } from "./utils/RuntimeLogger.js";
 
 let ioInstance = null;
 
@@ -40,7 +44,7 @@ export const getUserRoom = (userId) => `user:${userId}`;
 const getConversationRoom = (conversationKey) => `conversation:${conversationKey}`;
 export const getIO = () => ioInstance;
 
-const setupSocket = (server) => {
+const setupSocket = async (server) => {
   const allowedOrigins = (process.env.ORIGIN || "")
     .split(",")
     .map((origin) => origin.trim())
@@ -56,6 +60,7 @@ const setupSocket = (server) => {
     pingTimeout: 60000,
     maxHttpBufferSize: 10 * 1024 * 1024,
   });
+  await configureSocketRedisAdapter(io);
   ioInstance = io;
 
   const userSocketsMap = new Map();
@@ -67,6 +72,7 @@ const setupSocket = (server) => {
   const userGroupCallSessionMap = new Map();
   const groupCallInviteTimeouts = new Map();
   const callDisconnectTimeouts = new Map();
+  const pendingDeliveryRetries = new Map();
   const clearCallSession = (sessionId) => {
     const session = callSessions.get(sessionId);
     if (!session) return;
@@ -74,6 +80,7 @@ const setupSocket = (server) => {
     userCallSessionMap.delete(String(session.callerId));
     userCallSessionMap.delete(String(session.calleeId));
     callSessions.delete(sessionId);
+    void realtimeState.deleteDirectCallSession(session);
   };
 
   const cancelRingingDirectCallSession = (sessionId, cancelledByUserId) => {
@@ -117,6 +124,7 @@ const setupSocket = (server) => {
     const existingSocketIds = userSocketsMap.get(userId) || new Set();
     existingSocketIds.add(socketId);
     userSocketsMap.set(userId, existingSocketIds);
+    void realtimeState.upsertPresence({ userId, socketId });
   };
 
   const removeUserSocket = (userId, socketId) => {
@@ -131,15 +139,18 @@ const setupSocket = (server) => {
     } else {
       userSocketsMap.set(userId, existingSocketIds);
     }
+    void realtimeState.removePresence({ userId, socketId });
   };
 
   const isUserOnline = (userId) => {
     return Boolean(userSocketsMap.get(String(userId))?.size);
   };
 
-  const isUserBusy = (userId) =>
+  const isUserBusy = async (userId) =>
     userCallSessionMap.has(String(userId)) ||
-    userGroupCallSessionMap.has(String(userId));
+    userGroupCallSessionMap.has(String(userId)) ||
+    Boolean(await realtimeState.getUserDirectCallSessionId(String(userId))) ||
+    Boolean(await realtimeState.getUserGroupCallSessionId(String(userId)));
 
   const buildCallProfileForUser = async (userId) => {
     const normalizedUserId = String(userId);
@@ -218,6 +229,7 @@ const setupSocket = (server) => {
     });
 
     groupCallSessions.delete(sessionId);
+    void realtimeState.deleteGroupCallSession(session);
   };
 
   const scheduleGroupCallInviteTimeout = (sessionId, timeoutMs = 30000) => {
@@ -268,11 +280,12 @@ const setupSocket = (server) => {
     }
 
     groupCallSessions.set(sessionId, session);
+    void realtimeState.setGroupCallSession(session);
     emitGroupCallParticipants(session);
   };
 
   const buildActiveUsersPayload = async () => {
-    const activeUserIds = [...userSocketsMap.keys()];
+    const activeUserIds = await realtimeState.getActiveUserIds();
 
     const users = await Promise.all(
       activeUserIds.map(async (userId) => {
@@ -310,6 +323,44 @@ const setupSocket = (server) => {
     );
 
     return users;
+  };
+
+  const clearPendingDeliveryRetry = async (deliveryKey) => {
+    const timeout = pendingDeliveryRetries.get(deliveryKey);
+    if (timeout) {
+      clearTimeout(timeout);
+      pendingDeliveryRetries.delete(deliveryKey);
+    }
+    await realtimeState.clearPendingDelivery(deliveryKey);
+  };
+
+  const schedulePendingDeliveryRetry = async ({
+    deliveryKey,
+    recipientId,
+    message,
+    attempts = 0,
+  }) => {
+    await realtimeState.storePendingDelivery(deliveryKey, {
+      messageId: String(message._id),
+      recipientId: String(recipientId),
+      attempts,
+    });
+
+    const timeout = setTimeout(async () => {
+      const pendingDelivery = await realtimeState.getPendingDelivery(deliveryKey);
+      if (!pendingDelivery || Number(pendingDelivery.attempts || 0) >= 2) {
+        await clearPendingDeliveryRetry(deliveryKey);
+        return;
+      }
+
+      io.to(getUserRoom(String(recipientId))).emit("receive_message", message);
+      await realtimeState.storePendingDelivery(deliveryKey, {
+        ...pendingDelivery,
+        attempts: Number(pendingDelivery.attempts || 0) + 1,
+      });
+    }, 4000);
+
+    pendingDeliveryRetries.set(deliveryKey, timeout);
   };
 
   const broadcastActiveUsers = async () => {
@@ -493,7 +544,10 @@ const setupSocket = (server) => {
   });
 
   const disconnect = async (socket, reason) => {
-    console.log(`Client disconnected: ${socket.id}`, { reason });
+    logRuntimeEvent("info", "socket.disconnected", {
+      socketId: socket.id,
+      reason,
+    });
 
     const userId = socket.data.userId;
     activeConversationBySocket.delete(socket.id);
@@ -554,16 +608,27 @@ const setupSocket = (server) => {
       const senderId = socket.data.userId;
       const recipientId = payload?.recipient;
       const groupId = payload?.groupId;
+      const clientMessageId = String(
+        payload?.clientMessageId || payload?.messageId || ""
+      ).trim();
 
       if (!senderId || (!recipientId && !groupId)) {
         callback?.({ ok: false, error: "recipient or groupId is required" });
         return;
       }
 
+      if (clientMessageId) {
+        await realtimeState.reserveMessageKey(
+          `${senderId}:${clientMessageId}`,
+          10 * 60 * 1000
+        );
+      }
+
       const message = groupId
         ? await createGroupMessage({
             groupId,
             senderId,
+            clientMessageId,
             content: payload.content,
             messageType: payload.messageType,
             fileUrl: payload.fileUrl,
@@ -581,6 +646,7 @@ const setupSocket = (server) => {
         : await createDirectMessage({
             senderId,
             recipientId,
+            clientMessageId,
             content: payload.content,
             messageType: payload.messageType,
             fileUrl: payload.fileUrl,
@@ -627,7 +693,11 @@ const setupSocket = (server) => {
           message: populatedMessage,
         });
 
-        callback?.({ ok: true, message: populatedMessage });
+        callback?.({
+          ok: true,
+          message: populatedMessage,
+          clientMessageId: clientMessageId || null,
+        });
         return;
       }
 
@@ -635,6 +705,15 @@ const setupSocket = (server) => {
       io.to(getUserRoom(senderId)).emit("receiveMessage", populatedMessage);
       io.to(getUserRoom(recipientId)).emit("receive_message", populatedMessage);
       io.to(getUserRoom(recipientId)).emit("receiveMessage", populatedMessage);
+
+      const deliveryKey = `${String(populatedMessage._id)}:${String(recipientId)}`;
+      if (isUserOnline(recipientId)) {
+        await schedulePendingDeliveryRetry({
+          deliveryKey,
+          recipientId,
+          message: populatedMessage,
+        });
+      }
 
       const recipientActiveConversation = [...activeConversationBySocket.entries()].some(
         ([socketId, conversationKey]) => {
@@ -647,11 +726,12 @@ const setupSocket = (server) => {
       );
 
       if (isUserOnline(recipientId)) {
-        const deliveredUpdates = await markMessagesDelivered({
-          recipientId,
+        logRuntimeEvent("info", "message.delivery.pending_ack", {
+          messageId: String(populatedMessage._id),
           conversationKey: normalizedConversationKey,
+          senderId: String(senderId),
+          recipientId: String(recipientId),
         });
-        emitStatusUpdates(deliveredUpdates, "message_delivered");
       }
 
       if (recipientActiveConversation) {
@@ -668,7 +748,11 @@ const setupSocket = (server) => {
         message: populatedMessage,
       });
 
-      callback?.({ ok: true, message: populatedMessage });
+      callback?.({
+        ok: true,
+        message: populatedMessage,
+        clientMessageId: clientMessageId || null,
+      });
     } catch (error) {
       console.error("Error sending message:", error);
       callback?.({ ok: false, error: "Failed to send message" });
@@ -778,9 +862,14 @@ const setupSocket = (server) => {
       await syncPendingDeliveriesForUser(String(userId));
       await broadcastActiveUsers();
 
-      console.log(`User connected: ${userId} with socket ID: ${socket.id}`);
+      logRuntimeEvent("info", "socket.connected", {
+        userId,
+        socketId: socket.id,
+      });
     } else {
-      console.log("User ID not provided during connection");
+      logRuntimeEvent("warn", "socket.connected_without_user", {
+        socketId: socket.id,
+      });
     }
 
     socket.on("join_conversation", async ({ otherUserId, conversationKey }) => {
@@ -812,12 +901,19 @@ const setupSocket = (server) => {
     socket.on("register-new-user", async (data) => {
       if (!socket.data.userId) return;
 
-      callProfilesMap.set(String(socket.data.userId), {
+      const profile = {
         userId: String(socket.data.userId),
         username: data.username,
         displayName: data.displayName || data.username,
         image: data.image || null,
         email: data.email || null,
+      };
+
+      callProfilesMap.set(String(socket.data.userId), profile);
+      await realtimeState.upsertPresence({
+        userId: socket.data.userId,
+        socketId: socket.id,
+        profile,
       });
 
       await broadcastActiveUsers();
@@ -846,7 +942,7 @@ const setupSocket = (server) => {
           return;
         }
 
-        if (isUserBusy(callerId)) {
+        if (await isUserBusy(callerId)) {
           callback?.({ ok: false, error: "You are already in another call." });
           return;
         }
@@ -874,15 +970,25 @@ const setupSocket = (server) => {
           ? [...new Set(payload.participantIds.map(String))]
           : [];
 
-        const onlineMembers = group.members
+        const candidateMembers = group.members
           .map((member) => String(member.user?._id || member.user))
           .filter(
             (memberId) =>
               memberId !== callerId &&
               isUserOnline(memberId) &&
-              !isUserBusy(memberId) &&
               (!requestedParticipantIds.length || requestedParticipantIds.includes(memberId))
           );
+
+        const onlineMembers = (
+          await Promise.all(
+            candidateMembers.map(async (memberId) => ({
+              memberId,
+              busy: await isUserBusy(memberId),
+            }))
+          )
+        )
+          .filter(({ busy }) => !busy)
+          .map(({ memberId }) => memberId);
 
         if (!onlineMembers.length) {
           callback?.({ ok: false, error: "No available group members are online." });
@@ -912,6 +1018,7 @@ const setupSocket = (server) => {
 
         groupCallSessions.set(sessionId, session);
         userGroupCallSessionMap.set(callerId, sessionId);
+        await realtimeState.setGroupCallSession(session);
         scheduleGroupCallInviteTimeout(sessionId);
 
         onlineMembers.forEach((memberId) => {
@@ -953,7 +1060,7 @@ const setupSocket = (server) => {
         }
 
         if (
-          isUserBusy(userId) &&
+          (await isUserBusy(userId)) &&
           userGroupCallSessionMap.get(userId) !== sessionId
         ) {
           callback?.({ ok: false, error: "You are already in another call." });
@@ -968,6 +1075,7 @@ const setupSocket = (server) => {
         });
         userGroupCallSessionMap.set(userId, sessionId);
         groupCallSessions.set(sessionId, session);
+        await realtimeState.setGroupCallSession(session);
 
         const inviteTimeout = groupCallInviteTimeouts.get(sessionId);
         if (inviteTimeout) {
@@ -1045,9 +1153,11 @@ const setupSocket = (server) => {
       callback?.({ ok: true });
     });
 
-    socket.on("group_call_offer", ({ sessionId, targetUserId, offer }) => {
+    socket.on("group_call_offer", async ({ sessionId, targetUserId, offer }) => {
       if (!sessionId || !targetUserId || !offer) return;
-      const session = groupCallSessions.get(sessionId);
+      const session =
+        groupCallSessions.get(sessionId) ||
+        (await realtimeState.getGroupCallSession(sessionId));
       if (!session) return;
       if (!session.participants.has(String(socket.data.userId))) return;
       if (!session.participants.has(String(targetUserId))) return;
@@ -1059,9 +1169,11 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("group_call_answer", ({ sessionId, targetUserId, answer }) => {
+    socket.on("group_call_answer", async ({ sessionId, targetUserId, answer }) => {
       if (!sessionId || !targetUserId || !answer) return;
-      const session = groupCallSessions.get(sessionId);
+      const session =
+        groupCallSessions.get(sessionId) ||
+        (await realtimeState.getGroupCallSession(sessionId));
       if (!session) return;
       if (!session.participants.has(String(socket.data.userId))) return;
       if (!session.participants.has(String(targetUserId))) return;
@@ -1073,9 +1185,11 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("group_call_candidate", ({ sessionId, targetUserId, candidate }) => {
+    socket.on("group_call_candidate", async ({ sessionId, targetUserId, candidate }) => {
       if (!sessionId || !targetUserId || !candidate) return;
-      const session = groupCallSessions.get(sessionId);
+      const session =
+        groupCallSessions.get(sessionId) ||
+        (await realtimeState.getGroupCallSession(sessionId));
       if (!session) return;
       if (!session.participants.has(String(socket.data.userId))) return;
       if (!session.participants.has(String(targetUserId))) return;
@@ -1125,14 +1239,17 @@ const setupSocket = (server) => {
         });
     });
 
-    socket.on("pre-offer", ({ callee, caller, callType }) => {
+    socket.on("pre-offer", async ({ callee, caller, callType }) => {
       const callerId = String(socket.data.userId);
       const targetUserId = callee?.userId;
       const targetSocketId = callee?.socketId;
 
       if (!callerId || !targetUserId) return;
 
-      if (userCallSessionMap.has(callerId) || userCallSessionMap.has(String(targetUserId))) {
+      if (
+        (await isUserBusy(callerId)) ||
+        (await isUserBusy(String(targetUserId)))
+      ) {
         io.to(socket.id).emit("pre-offer-answer", {
           answer: "CALL_BUSY",
         });
@@ -1163,6 +1280,7 @@ const setupSocket = (server) => {
       callSessions.set(sessionId, session);
       userCallSessionMap.set(callerId, sessionId);
       userCallSessionMap.set(String(targetUserId), sessionId);
+      await realtimeState.setDirectCallSession(session);
 
       if (targetUserId) {
         io.to(getUserRoom(String(targetUserId))).emit("pre-offer", {
@@ -1188,9 +1306,10 @@ const setupSocket = (server) => {
       }
     });
 
-    socket.on("pre-offer-answer", ({ callerSocketId, answer, sessionId }) => {
+    socket.on("pre-offer-answer", async ({ callerSocketId, answer, sessionId }) => {
       const session =
         (sessionId ? callSessions.get(sessionId) : null) ||
+        (sessionId ? await realtimeState.getDirectCallSession(sessionId) : null) ||
         findSessionBySocketId(socket.id);
       if (!session) return;
 
@@ -1198,6 +1317,7 @@ const setupSocket = (server) => {
         session.status = "active";
         session.calleeSocketId = socket.id;
         callSessions.set(session.id, session);
+        await realtimeState.setDirectCallSession(session);
       } else {
         clearCallSession(session.id);
       }
@@ -1209,11 +1329,26 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("webRTC-offer", ({ sessionId, offer }) => {
-      if (!sessionId || !offer) return;
+    socket.on("webRTC-offer", async ({ sessionId, offer }) => {
+      if (!sessionId || !offer) {
+        logRuntimeEvent("warn", "call.signaling.invalid_offer", {
+          socketId: socket.id,
+          hasSessionId: Boolean(sessionId),
+          hasOffer: Boolean(offer),
+        });
+        return;
+      }
 
-      const session = callSessions.get(sessionId);
-      if (!session) return;
+      const session =
+        callSessions.get(sessionId) ||
+        (await realtimeState.getDirectCallSession(sessionId));
+      if (!session) {
+        logRuntimeEvent("warn", "call.signaling.offer_session_missing", {
+          socketId: socket.id,
+          sessionId,
+        });
+        return;
+      }
 
       const senderId = String(socket.data.userId);
       const targetUserId =
@@ -1227,11 +1362,26 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("webRTC-answer", ({ sessionId, answer }) => {
-      if (!sessionId || !answer) return;
+    socket.on("webRTC-answer", async ({ sessionId, answer }) => {
+      if (!sessionId || !answer) {
+        logRuntimeEvent("warn", "call.signaling.invalid_answer", {
+          socketId: socket.id,
+          hasSessionId: Boolean(sessionId),
+          hasAnswer: Boolean(answer),
+        });
+        return;
+      }
 
-      const session = callSessions.get(sessionId);
-      if (!session) return;
+      const session =
+        callSessions.get(sessionId) ||
+        (await realtimeState.getDirectCallSession(sessionId));
+      if (!session) {
+        logRuntimeEvent("warn", "call.signaling.answer_session_missing", {
+          socketId: socket.id,
+          sessionId,
+        });
+        return;
+      }
 
       const senderId = String(socket.data.userId);
       const targetUserId =
@@ -1245,11 +1395,26 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("webRTC-candidate", ({ sessionId, candidate }) => {
-      if (!sessionId || !candidate) return;
+    socket.on("webRTC-candidate", async ({ sessionId, candidate }) => {
+      if (!sessionId || !candidate) {
+        logRuntimeEvent("warn", "call.signaling.invalid_candidate", {
+          socketId: socket.id,
+          hasSessionId: Boolean(sessionId),
+          hasCandidate: Boolean(candidate),
+        });
+        return;
+      }
 
-      const session = callSessions.get(sessionId);
-      if (!session) return;
+      const session =
+        callSessions.get(sessionId) ||
+        (await realtimeState.getDirectCallSession(sessionId));
+      if (!session) {
+        logRuntimeEvent("warn", "call.signaling.candidate_session_missing", {
+          socketId: socket.id,
+          sessionId,
+        });
+        return;
+      }
 
       const senderId = String(socket.data.userId);
       const targetUserId =
@@ -1263,9 +1428,10 @@ const setupSocket = (server) => {
       });
     });
 
-    socket.on("user-hanged-up", ({ sessionId } = {}) => {
+    socket.on("user-hanged-up", async ({ sessionId } = {}) => {
       const session =
         (sessionId ? callSessions.get(sessionId) : null) ||
+        (sessionId ? await realtimeState.getDirectCallSession(sessionId) : null) ||
         findSessionBySocketId(socket.id);
       if (session) {
         if (session.status === "ringing") {
@@ -1409,6 +1575,35 @@ const setupSocket = (server) => {
     socket.on("sendMessage", (payload, callback) =>
       handleSendMessage({ socket, payload, callback })
     );
+
+    socket.on("message_received_ack", async ({ messageId, conversationKey } = {}) => {
+      try {
+        if (!messageId) return;
+
+        const deliveryKey = `${String(messageId)}:${String(socket.data.userId)}`;
+        await clearPendingDeliveryRetry(deliveryKey);
+
+        const deliveredUpdate = await markMessageDelivered({
+          messageId,
+          recipientId: socket.data.userId,
+        });
+
+        if (deliveredUpdate) {
+          emitStatusUpdates([deliveredUpdate], "message_delivered");
+          logRuntimeEvent("info", "message.delivery.acknowledged", {
+            messageId: String(messageId),
+            conversationKey: conversationKey || deliveredUpdate.conversationKey,
+            recipientId: String(socket.data.userId),
+          });
+        }
+      } catch (error) {
+        logRuntimeEvent("warn", "message.delivery_ack.failed", {
+          messageId: String(messageId || ""),
+          recipientId: String(socket.data.userId || ""),
+          message: error?.message || "unknown_error",
+        });
+      }
+    });
 
     socket.on("mark_messages_seen", async ({ conversationKey, otherUserId } = {}, callback) => {
       try {

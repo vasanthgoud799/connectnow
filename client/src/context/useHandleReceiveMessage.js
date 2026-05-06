@@ -25,6 +25,11 @@ const useHandleReceiveMessage = (socket) => {
     if (!socket) return;
 
     const handleReceiveMessage = (message) => {
+      socket.emit("message_received_ack", {
+        messageId: message?._id || message?.id,
+        conversationKey: message?.conversationKey,
+      });
+
       decryptIncomingMessage({
         message,
         currentUserId: useAppStore.getState().userInfo?.id,

@@ -19,6 +19,20 @@ export const getGroupConversationKey = (groupId) => {
   return `group:${String(groupId)}`;
 };
 
+export const buildClientMessageLookupQuery = ({
+  senderId,
+  conversationKey,
+  clientMessageId,
+}) => {
+  if (!clientMessageId) return null;
+
+  return {
+    sender: senderId,
+    conversationKey,
+    clientMessageId: String(clientMessageId),
+  };
+};
+
 const buildLastMessagePayload = (messageDoc) => ({
   messageId: messageDoc._id,
   sender: messageDoc.sender,
@@ -192,6 +206,7 @@ const buildGroupChatUpsert = ({ message, group, senderId }) => {
 export const createDirectMessage = async ({
   senderId,
   recipientId,
+  clientMessageId = null,
   content,
   messageType,
   fileUrl,
@@ -212,12 +227,25 @@ export const createDirectMessage = async ({
   }
 
   const conversationKey = getConversationKey(senderId, recipientId);
+  const directLookupQuery = buildClientMessageLookupQuery({
+    senderId,
+    conversationKey,
+    clientMessageId,
+  });
+  if (directLookupQuery) {
+    const existingMessage = await Message.findOne(directLookupQuery);
+
+    if (existingMessage) {
+      return existingMessage;
+    }
+  }
   const createdAt = timestamp ? new Date(timestamp) : new Date();
   const replyPreview = await buildReplyPreview(replyTo, senderId);
 
   const message = await Message.create({
     conversationKey,
     chatType: "direct",
+    clientMessageId: clientMessageId ? String(clientMessageId) : null,
     sender: senderId,
     recipient: recipientId,
     content: encryption?.enabled ? "" : content,
@@ -322,6 +350,7 @@ export const createGroupSystemMessage = async ({
 export const createGroupMessage = async ({
   groupId,
   senderId,
+  clientMessageId = null,
   content,
   messageType,
   fileUrl,
@@ -350,12 +379,25 @@ export const createGroupMessage = async ({
   }
 
   const conversationKey = getGroupConversationKey(groupId);
+  const groupLookupQuery = buildClientMessageLookupQuery({
+    senderId,
+    conversationKey,
+    clientMessageId,
+  });
+  if (groupLookupQuery) {
+    const existingMessage = await Message.findOne(groupLookupQuery);
+
+    if (existingMessage) {
+      return existingMessage;
+    }
+  }
   const createdAt = timestamp ? new Date(timestamp) : new Date();
   const replyPreview = await buildReplyPreview(replyTo, senderId);
 
   const message = await Message.create({
     conversationKey,
     chatType: "group",
+    clientMessageId: clientMessageId ? String(clientMessageId) : null,
     sender: senderId,
     group: groupId,
     content: encryption?.enabled ? "" : content,
@@ -876,6 +918,50 @@ export const markMessagesDelivered = async ({ recipientId, conversationKey }) =>
     status: "delivered",
     deliveredAt,
   }));
+};
+
+export const markMessageDelivered = async ({ messageId, recipientId }) => {
+  const deliveredAt = new Date();
+  const message = await Message.findOneAndUpdate(
+    {
+      _id: messageId,
+      recipient: recipientId,
+      chatType: "direct",
+      status: "sent",
+    },
+    {
+      $set: {
+        status: "delivered",
+        deliveredAt,
+      },
+    },
+    { new: true }
+  );
+
+  if (!message) {
+    return null;
+  }
+
+  await Chat.updateOne(
+    {
+      conversationKey: message.conversationKey,
+      "lastMessage.messageId": message._id,
+    },
+    {
+      $set: {
+        "lastMessage.status": "delivered",
+      },
+    }
+  );
+
+  return {
+    messageId: String(message._id),
+    senderId: String(message.sender),
+    recipientId: String(recipientId),
+    conversationKey: message.conversationKey,
+    status: "delivered",
+    deliveredAt,
+  };
 };
 
 export const markConversationSeen = async ({ recipientId, conversationKey }) => {

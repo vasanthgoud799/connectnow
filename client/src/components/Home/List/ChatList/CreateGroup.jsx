@@ -217,7 +217,7 @@ function CreateGroup({ onClose, onCreated }) {
             <Button
               onClick={handleCreate}
               disabled={!canCreate || loading}
-              className="h-12 w-full rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              className="sticky bottom-0 h-12 w-full rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
             >
               {loading ? "Creating..." : "Create group"}
             </Button>

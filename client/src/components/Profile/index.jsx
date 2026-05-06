@@ -1,5 +1,5 @@
 import { useAppStore } from "@/store";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUser } from "@clerk/clerk-react";
 import { IoArrowBack } from "react-icons/io5";
@@ -9,7 +9,8 @@ import { UPDATE_PROFILE_ROUTE, UPLOAD_FILE_ROUTE } from "@/utils/constants";
 import { apiClient } from "@/lib/api-client";
 import { toast } from "sonner";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Camera, ShieldCheck, UserRound } from "lucide-react";
+import { Camera, Copy, ShieldCheck, UserRound } from "lucide-react";
+import { ensureUserE2EEIdentity, getLocalIdentitySummary } from "@/crypto/e2eeService";
 
 function Profile() {
   const { userInfo, setUserInfo } = useAppStore();
@@ -29,9 +30,41 @@ function Profile() {
     String(provider).toLowerCase().includes("google")
   );
   const passwordEnabled = Boolean(clerkUser?.passwordEnabled);
+  const [identitySummary, setIdentitySummary] = useState(null);
   const normalizedFirstName = firstName.trim();
   const normalizedLastName = lastName.trim();
   const normalizedAbout = about.trim();
+
+  useEffect(() => {
+    let ignore = false;
+
+    const loadIdentitySummary = async () => {
+      if (!userInfo?.id) {
+        if (!ignore) {
+          setIdentitySummary(null);
+        }
+        return;
+      }
+
+      try {
+        await ensureUserE2EEIdentity(userInfo);
+        const summary = await getLocalIdentitySummary(userInfo.id);
+        if (!ignore) {
+          setIdentitySummary(summary);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setIdentitySummary(null);
+        }
+        console.error("Error loading local security fingerprint:", error);
+      }
+    };
+
+    loadIdentitySummary();
+    return () => {
+      ignore = true;
+    };
+  }, [userInfo]);
 
   const validateProfile = () => {
     if (!normalizedFirstName) {
@@ -102,6 +135,17 @@ function Profile() {
         );
         toast.error(error.response?.data?.message || "Failed to update profile");
       }
+    }
+  };
+
+  const copyFingerprint = async () => {
+    if (!identitySummary?.fingerprint) return;
+
+    try {
+      await navigator.clipboard.writeText(identitySummary.fingerprint);
+      toast.success("Security fingerprint copied.");
+    } catch {
+      toast.error("Unable to copy fingerprint.");
     }
   };
 
@@ -228,7 +272,7 @@ function Profile() {
                 />
               </div>
 
-              <div className="themed-page-card mt-8 rounded-[28px] p-5">
+              <div className="themed-page-card mt-8 rounded-[28px] p-5" data-testid="profile-security-fingerprint-card">
                 <p className="themed-title text-sm font-medium">Privacy labels</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="themed-panel-soft themed-subtitle rounded-2xl px-4 py-3 text-sm">
@@ -237,6 +281,35 @@ function Profile() {
                   <div className="themed-panel-soft themed-subtitle rounded-2xl px-4 py-3 text-sm">
                     Device-aware account session
                   </div>
+                </div>
+              </div>
+
+              <div className="themed-page-card mt-8 rounded-[28px] p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="themed-title text-sm font-medium">Security fingerprint</p>
+                    <p className="themed-subtitle mt-1 text-xs">
+                      Compare this fingerprint with your trusted devices before verifying a contact.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copyFingerprint}
+                    disabled={!identitySummary?.fingerprint}
+                    data-testid="profile-copy-fingerprint-button"
+                    className="themed-panel-soft inline-flex h-10 w-10 items-center justify-center rounded-2xl disabled:opacity-50"
+                    title="Copy fingerprint"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="themed-panel-soft mt-4 rounded-2xl px-4 py-4" data-testid="profile-fingerprint-value">
+                  <p className="break-words font-mono text-sm leading-7 text-slate-100">
+                    {identitySummary?.fingerprintDisplay || "Generating your device fingerprint..."}
+                  </p>
+                  <p className="themed-subtitle mt-3 text-xs">
+                    RSA key v{identitySummary?.keyVersion || 1}
+                  </p>
                 </div>
               </div>
 

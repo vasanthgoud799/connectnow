@@ -1,4 +1,3 @@
-import React from "react";
 import { BarChart3, CalendarClock, FileText, ImageIcon, Mic, Video } from "lucide-react";
 
 const menuItems = [
@@ -68,6 +67,7 @@ function AttachmentMenu({ onAttach, onCreatePoll, onCreateSchedule }) {
             <button
               key={item.type}
               type="button"
+              data-testid={`attachment-menu-item-${item.type}`}
               className="themed-attachment-item flex items-center gap-3 rounded-2xl px-3 py-3 text-left transition"
               onClick={() => handleFileInput(item.type)}
             >

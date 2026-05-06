@@ -1,4 +1,5 @@
 import { mkdirSync, renameSync, unlinkSync, writeFileSync } from "fs";
+import { createSignedMediaAccessToken } from "../utils/AuthSecurity.js";
 
 const sanitizeFileName = (fileName = "file") =>
   fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -16,8 +17,31 @@ const getFolderForMimeType = (mimeType = "") => {
   return "documents";
 };
 
-const buildLocalMediaUrl = ({ req, publicPath }) =>
-  `${req.protocol}://${req.get("host")}/${publicPath}`;
+const getBackendOrigin = (req = null) => {
+  if (req) {
+    return `${req.protocol}://${req.get("host")}`;
+  }
+
+  return (
+    process.env.PUBLIC_API_URL ||
+    process.env.SERVER_PUBLIC_URL ||
+    process.env.APP_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+};
+
+const buildLocalMediaAccessUrl = ({ req, messageId, storageProvider, storagePath }) => {
+  const origin = getBackendOrigin(req);
+  if (!origin) {
+    return storagePath;
+  }
+  const token = createSignedMediaAccessToken({
+    messageId,
+    storageProvider,
+    storagePath,
+  });
+  return `${origin}/api/media/messages/${messageId}/file?token=${encodeURIComponent(token)}`;
+};
 
 export const buildStableUserAvatarUrl = ({ req, userId }) =>
   `${req.protocol}://${req.get("host")}/api/media/user/${userId}/image`;
@@ -151,7 +175,7 @@ const uploadToLocalDisk = ({ file, req }) => {
 
   const publicPath = encodeURI(fileName.replace(/\\/g, "/"));
   return {
-    fileUrl: buildLocalMediaUrl({ req, publicPath }),
+    fileUrl: publicPath,
     storageProvider: "local",
     storagePath: publicPath,
     storageBucket: null,
@@ -245,8 +269,13 @@ export const resolveMediaUrl = async ({ message, req = null, expiresIn } = {}) =
   if (!message?.fileUrl) return message;
 
   if (message.storageProvider === "local") {
-    if (req && message.storagePath && !String(message.fileUrl).startsWith("http")) {
-      message.fileUrl = buildLocalMediaUrl({ req, publicPath: message.storagePath });
+    if (message.storagePath && message._id) {
+      message.fileUrl = buildLocalMediaAccessUrl({
+        req,
+        messageId: message._id,
+        storageProvider: message.storageProvider,
+        storagePath: message.storagePath,
+      });
     }
     return message;
   }

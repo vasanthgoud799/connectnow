@@ -18,11 +18,30 @@ import {
   toggleStarredMessage,
 } from "../services/MessageService.js";
 
+export const buildMessagesPaginationQuery = ({
+  conversationKey,
+  userId,
+  before = null,
+}) => {
+  const query = {
+    conversationKey,
+    deletedFor: { $ne: userId },
+  };
+
+  if (before instanceof Date && !Number.isNaN(before.getTime())) {
+    query.createdAt = { $lt: before };
+  }
+
+  return query;
+};
+
 export const getMessages = async (req, res) => {
   try {
     const user1 = req.userId;
     const user2 = req.validated?.conversation?.userId;
     const groupId = req.validated?.conversation?.groupId;
+    const before = req.validated?.conversation?.before;
+    const limit = req.validated?.conversation?.limit || 50;
 
     if (!user1 || (!user2 && !groupId)) {
       return res.status(400).send("A user ID or group ID is required.");
@@ -43,19 +62,34 @@ export const getMessages = async (req, res) => {
       ? `group:${groupId}`
       : getConversationKey(user1, user2);
 
-    const messages = await Message.find({
+    const query = buildMessagesPaginationQuery({
       conversationKey,
-      deletedFor: { $ne: req.userId },
-    })
+      userId: req.userId,
+      before,
+    });
+
+    const messages = await Message.find(query)
       .populate("sender", "id email firstName lastName image")
       .populate("recipient", "id email firstName lastName image")
       .populate("group", "name description image members")
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
       .lean();
 
-    await hydrateMessagesMediaForUser({ messages, req });
+    const hasMore = messages.length > limit;
+    const trimmedMessages = hasMore ? messages.slice(0, limit) : messages;
+    trimmedMessages.reverse();
 
-    return res.status(200).json({ messages, conversationKey });
+    await hydrateMessagesMediaForUser({ messages: trimmedMessages, req });
+
+    return res.status(200).json({
+      messages: trimmedMessages,
+      conversationKey,
+      pagination: {
+        hasMore,
+        nextCursor: hasMore ? trimmedMessages[0]?.createdAt || null : null,
+      },
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });

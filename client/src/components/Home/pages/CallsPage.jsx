@@ -20,7 +20,6 @@ import {
 } from "@/utils/constants";
 import { useAppStore } from "@/store";
 import { isDirectCallBusy } from "@/store/actions/callActions";
-import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
 
 function formatCallDate(value) {
   if (!value) return "";
@@ -300,6 +299,7 @@ function CallsPage({ activeUsers = [], callState }) {
       console.error("Error logging call:", error);
     }
 
+    const { callToOtherUser } = await import("@/utils/webRTC/webRTCHandler");
     callToOtherUser(
       {
         userId: contact._id,

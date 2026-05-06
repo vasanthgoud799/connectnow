@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import moment from "moment";
-import EmojiPicker from "emoji-picker-react";
 import { connect } from "react-redux";
 import {
   ArrowLeft,
@@ -29,6 +28,9 @@ import {
   Sparkles,
   Search,
   SendHorizonal,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldQuestion,
   Smile,
   Star,
   Trash2,
@@ -39,11 +41,8 @@ import {
 
 import { Input } from "@/components/ui/input";
 import AttachmentMenu from "./AttachmentMenu";
-import AIAssistModal from "./AIAssistModal";
-import CreatePollModal from "./CreatePollModal";
-import ImageModal from "./ImageModal";
-import ScheduleMessageModal from "./ScheduleMessageModal";
-import PremiumUpgradeModal from "../PremiumUpgradeModal";
+import RouteLoader from "@/components/ui/RouteLoader";
+import VirtualizedMessageList from "./VirtualizedMessageList";
 import Tick from "../List/ChatList/Tick";
 import { useAppStore } from "@/store";
 import { useSocket } from "@/context/SocketContext";
@@ -66,18 +65,24 @@ import {
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants.js";
 import { isDirectCallBusy } from "@/store/actions/callActions";
-import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
-import { startGroupCall } from "@/utils/webRTC/webRTCGroupCallHandler";
-import { requestRemoteE2eeInit } from "@/utils/wssConnection/wssConnection";
 import {
   decryptIncomingMessages,
   decryptMediaAttachmentToObjectUrl,
   encryptMediaFileForConversation,
   encryptTextForConversation,
   fetchConversationPublicKeys,
+  formatFingerprintForDisplay,
   hydrateMessagesFromCache,
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
+import { useTrustStatus } from "./hooks/useTrustStatus";
+
+const EmojiPicker = lazy(() => import("emoji-picker-react"));
+const AIAssistModal = lazy(() => import("./AIAssistModal"));
+const CreatePollModal = lazy(() => import("./CreatePollModal"));
+const ImageModal = lazy(() => import("./ImageModal"));
+const ScheduleMessageModal = lazy(() => import("./ScheduleMessageModal"));
+const PremiumUpgradeModal = lazy(() => import("../PremiumUpgradeModal"));
 
 function formatDurationLabel(totalSeconds) {
   const mins = Math.floor(totalSeconds / 60)
@@ -1083,6 +1088,7 @@ function Chat({
   const [groupCallMode, setGroupCallMode] = useState("audio");
   const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
   const [groupE2eeBlockedMembers, setGroupE2eeBlockedMembers] = useState([]);
+  const [isDecryptingMessages, setIsDecryptingMessages] = useState(false);
 
   const {
     userInfo,
@@ -1107,7 +1113,7 @@ function Chat({
   const selectedChatBirthdayMeta = getUpcomingBirthdayMeta(selectedChatData?.birthday);
 
   const socket = useSocket();
-  const endRef = useRef(null);
+  const messageListRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -1149,6 +1155,17 @@ function Chat({
     Boolean(activeCallUser) || selectedChatData?.status === "Online";
   const hasGroupEncryptionWarning =
     isGroupChat && groupE2eeBlockedMembers.length > 0;
+  const {
+    contactTrustState,
+    loadingContactTrustState,
+    verifyCurrentFingerprint: handleVerifyCurrentFingerprint,
+    clearFingerprintVerification: handleClearFingerprintVerification,
+  } = useTrustStatus({
+    isGroupChat,
+    selectedChatId,
+    currentUserId: userInfo?.id,
+    displayName: selectedChatName || selectedChatEmail || "Contact",
+  });
 
   const groupCallableMembers = useMemo(() => {
     if (!isGroupChat) return [];
@@ -1187,6 +1204,7 @@ function Chat({
   const waitForConversationKeys = async (missingRecipientIds = []) => {
     if (!missingRecipientIds.length) return false;
 
+    const { requestRemoteE2eeInit } = await import("@/utils/wssConnection/wssConnection");
     requestRemoteE2eeInit({ userIds: missingRecipientIds });
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -1301,6 +1319,7 @@ function Chat({
 
     const getMessages = async () => {
       try {
+        setIsDecryptingMessages(true);
         const response = await apiClient.post(
           GET_ALL_MESSAGES_ROUTES,
           isGroupChat ? { groupId: selectedChatId } : { id: selectedChatId },
@@ -1338,6 +1357,8 @@ function Chat({
         }
       } catch (err) {
         console.log("Error fetching messages:", err);
+      } finally {
+        setIsDecryptingMessages(false);
       }
     };
 
@@ -1597,26 +1618,18 @@ function Chat({
   }, [aiEnabled, attachedFile.file, isPremiumUser, isRecordingAudio, text]);
 
   useEffect(() => {
-    if (endRef.current) {
-      const timeoutId = setTimeout(() => {
-        endRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 10);
+    const timeoutId = setTimeout(() => {
+      messageListRef.current?.scrollToBottom("smooth");
+    }, 10);
 
-      return () => clearTimeout(timeoutId);
-    }
+    return () => clearTimeout(timeoutId);
   }, [selectedChatMessages]);
 
   useEffect(() => {
     if (!focusedMessageId) return;
 
     const timeoutId = setTimeout(() => {
-      const messageElement = document.querySelector(
-        `[data-message-id="${focusedMessageId}"]`
-      );
-
-      if (messageElement) {
-        messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      messageListRef.current?.scrollToMessageId(focusedMessageId);
 
       setTimeout(() => {
         setFocusedMessageId(undefined);
@@ -1698,6 +1711,7 @@ function Chat({
 
   const fetchStarredMessages = async () => {
     try {
+      setIsDecryptingMessages(true);
       const response = await apiClient.get(STARRED_MESSAGES_ROUTE, {
         params: {
           conversationKey: selectedConversationKey,
@@ -1729,6 +1743,8 @@ function Chat({
     } catch (error) {
       console.error("Error fetching starred messages:", error);
       toast.error("Unable to load starred messages.");
+    } finally {
+      setIsDecryptingMessages(false);
     }
   };
 
@@ -2078,7 +2094,7 @@ function Chat({
     }
   };
 
-  const initiateCall = (callType = "video") => {
+  const initiateCall = async (callType = "video") => {
     const targetUserId = selectedChatId || activeCallUser?.userId;
 
     if (isDirectCallBusy(callState)) {
@@ -2098,6 +2114,7 @@ function Chat({
         { withCredentials: true }
       )
       .catch((error) => console.error("Error logging call:", error));
+    const { callToOtherUser } = await import("@/utils/webRTC/webRTCHandler");
     callToOtherUser(
       {
         userId: targetUserId,
@@ -2126,6 +2143,7 @@ function Chat({
       return;
     }
 
+    const { startGroupCall } = await import("@/utils/webRTC/webRTCGroupCallHandler");
     await startGroupCall({
       groupId: selectedChatId,
       groupName: selectedChatData?.name,
@@ -2233,6 +2251,9 @@ function Chat({
       socket.emit(
         "send_message",
         {
+          clientMessageId:
+            globalThis.crypto?.randomUUID?.() ||
+            `poll-${Date.now()}-${Math.random()}`,
           recipient: isGroupChat ? undefined : selectedChatData._id,
           groupId: isGroupChat ? selectedChatData._id : undefined,
           content: "Encrypted poll",
@@ -2301,6 +2322,10 @@ function Chat({
     let optimisticMessageId = null;
 
     try {
+      const clientMessageId =
+        globalThis.crypto?.randomUUID?.() ||
+        `msg-${Date.now()}-${Math.random()}`;
+
       if (editingMessageId) {
         const encryptedEditPayload = await buildEncryptedPayload(text.trim());
         await handleEditMessage(
@@ -2406,6 +2431,7 @@ function Chat({
       socket.emit(
         "send_message",
         {
+          clientMessageId,
           recipient: isGroupChat ? undefined : selectedChatId,
           groupId: isGroupChat ? selectedChatId : undefined,
           content:
@@ -2652,8 +2678,294 @@ function Chat({
     [starredMessages]
   );
 
+  const renderMessageRow = (message) => {
+    const senderId =
+      typeof message.sender === "string"
+        ? message.sender
+        : message.sender?._id || message.sender?.id;
+    const isSender = senderId === userInfo.id;
+
+    return (
+      <div
+        className={`flex ${isSender ? "justify-end" : "justify-start"} py-1`}
+        data-testid={`chat-message-row-${String(message._id || message.id)}`}
+      >
+        <div
+          data-message-id={String(message._id || message.id)}
+          className={`flex ${isMobile ? "max-w-[86%]" : "max-w-[72%]"} min-w-0 items-end gap-3 ${
+            isSender ? "flex-row-reverse" : ""
+          } ${focusedMessageId === String(message._id || message.id) ? "rounded-[28px] ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-transparent" : ""}`}
+        >
+          {!isSender && (
+            <div className="themed-received-avatar flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold">
+              {(selectedChatData?.firstName || "R")[0]}
+            </div>
+          )}
+
+          <div className="min-w-0 max-w-full">
+            {isGroupChat && !isSender && message.messageType !== "system" && (
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em] text-cyan-200/80">
+                {typeof message.sender === "string"
+                  ? "Member"
+                  : [message.sender?.firstName, message.sender?.lastName]
+                      .filter(Boolean)
+                      .join(" ") || message.sender?.email || "Member"}
+              </p>
+            )}
+            {message.isForwarded && (
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+                Forwarded
+              </p>
+            )}
+            <div className="flex items-start gap-2">
+              {message.messageType === "poll" ? (
+                <div className="min-w-0">{renderMessageBody(message)}</div>
+              ) : (
+                <div
+                  className={`min-w-0 max-w-full overflow-hidden rounded-[22px] ${
+                    ["image", "video"].includes(String(message.messageType || "").toLowerCase())
+                      ? "p-2"
+                      : "px-4 py-3"
+                  } shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
+                    isSender
+                      ? "rounded-br-md bg-gradient-to-r from-[#ef5da8] to-[#ff9f43] text-white"
+                      : "themed-received-bubble rounded-bl-md"
+                  }`}
+                >
+                  {message.replyPreview && (
+                    <button
+                      type="button"
+                      className={`mb-3 block w-full rounded-2xl border px-3 py-2 text-left ${
+                        isSender
+                          ? "border-white/20 bg-white/10"
+                          : "border-white/10 bg-black/5"
+                      }`}
+                      onClick={() => setFocusedMessageId(String(message.replyPreview.messageId))}
+                    >
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">
+                        Reply
+                      </p>
+                      <p className="mt-1 truncate text-sm">{message.replyPreview.content}</p>
+                    </button>
+                  )}
+                  {renderMessageBody(message)}
+                  {message.editedAt && <p className="mt-2 text-[11px] opacity-70">edited</p>}
+                </div>
+              )}
+
+              {message.messageType !== "system" && (
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    className="themed-panel-soft flex h-8 w-8 items-center justify-center rounded-full opacity-80 transition hover:opacity-100"
+                    onClick={(event) => {
+                      const messageId = String(message._id || message.id);
+                      if (activeMessageMenuId === messageId) {
+                        setActiveMessageMenuId(null);
+                        return;
+                      }
+
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const menuWidth = 224;
+                      const menuHeight = 424;
+                      const viewportPadding = 12;
+                      const fitsBelow =
+                        rect.bottom + 8 + menuHeight <= window.innerHeight - viewportPadding;
+                      const preferRightAligned = isSender;
+                      const left = preferRightAligned
+                        ? Math.max(
+                            viewportPadding,
+                            Math.min(
+                              rect.right - menuWidth,
+                              window.innerWidth - menuWidth - viewportPadding
+                            )
+                          )
+                        : Math.max(
+                            viewportPadding,
+                            Math.min(
+                              rect.left,
+                              window.innerWidth - menuWidth - viewportPadding
+                            )
+                          );
+
+                      setActiveMessageMenuPosition({
+                        top: fitsBelow
+                          ? rect.bottom + 8
+                          : Math.max(viewportPadding, rect.top - menuHeight - 8),
+                        left,
+                      });
+                      setActiveMessageMenuId(messageId);
+                    }}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+
+                  {activeMessageMenuId === String(message._id || message.id) &&
+                    createPortal(
+                      <>
+                        <div
+                          className="fixed inset-0 z-[95]"
+                          onClick={() => setActiveMessageMenuId(null)}
+                        />
+                        <div
+                          className="themed-modal-surface fixed z-[100] w-56 rounded-[20px] p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]"
+                          style={{
+                            top: activeMessageMenuPosition.top,
+                            left: activeMessageMenuPosition.left,
+                          }}
+                        >
+                          <div className="mb-2 flex flex-wrap gap-2 px-2 pt-2">
+                            {QUICK_REACTIONS.map((emoji) => {
+                              const isMine = (message.reactions || []).some(
+                                (reaction) =>
+                                  String(reaction.userId?._id || reaction.userId) ===
+                                    String(userInfo.id) && reaction.emoji === emoji
+                              );
+
+                              return (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  className={`rounded-full px-2 py-1 text-lg transition ${
+                                    isMine ? "bg-cyan-400/15" : "bg-white/5"
+                                  }`}
+                                  onClick={() => {
+                                    handleToggleReaction(message, emoji, isMine);
+                                    setActiveMessageMenuId(null);
+                                  }}
+                                >
+                                  {emoji}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setReplyingToMessage(message); setEditingMessageId(null); setText(""); setActiveMessageMenuId(null); }}>
+                            <ChevronDown className="h-4 w-4 rotate-90" />
+                            Reply
+                          </button>
+                          <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setForwardingMessage(message); setShowForwardModal(true); setActiveMessageMenuId(null); }}>
+                            <Forward className="h-4 w-4" />
+                            Forward
+                          </button>
+                          <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleToggleStar(message._id || message.id); setActiveMessageMenuId(null); }}>
+                            <Star className="h-4 w-4" />
+                            {starredMessageIdSet.has(String(message._id || message.id)) ? "Unstar" : "Star"}
+                          </button>
+                          <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleTogglePin(message._id || message.id); setActiveMessageMenuId(null); }}>
+                            <Pin className="h-4 w-4" />
+                            {(message.pinnedByChat || []).some((pin) => pin.conversationKey === selectedConversationKey) ? "Unpin" : "Pin"}
+                          </button>
+                          {message.messageType === "text" && !message.isDeletedForEveryone && (
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                              onClick={() => {
+                                if (!isPremiumUser) {
+                                  openPremiumModal();
+                                } else {
+                                  runAIMessageAction({
+                                    route: AI_TRANSLATE_ROUTE,
+                                    payload: {
+                                      text: message.content,
+                                      targetLanguage:
+                                        userInfo?.aiPreferences?.translationLanguage || "English",
+                                    },
+                                    title: "Translate message",
+                                    subtitle: `Translated to ${userInfo?.aiPreferences?.translationLanguage || "English"}`,
+                                  });
+                                }
+                                setActiveMessageMenuId(null);
+                              }}
+                            >
+                              {isPremiumUser ? (
+                                <Sparkles className="h-4 w-4" />
+                              ) : (
+                                <Lock className="h-4 w-4" />
+                              )}
+                              Translate
+                            </button>
+                          )}
+                          {message.messageType === "text" && !message.isDeletedForEveryone && (
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                              onClick={() => {
+                                if (!isPremiumUser) {
+                                  openPremiumModal();
+                                } else {
+                                  runAIMessageAction({
+                                    route: AI_REWRITE_ROUTE,
+                                    payload: {
+                                      text: message.content,
+                                      tone: userInfo?.aiPreferences?.preferredTone || "friendly",
+                                    },
+                                    title: "Rewrite message",
+                                    subtitle: `Rewritten in a ${userInfo?.aiPreferences?.preferredTone || "friendly"} tone`,
+                                  });
+                                }
+                                setActiveMessageMenuId(null);
+                              }}
+                            >
+                              {isPremiumUser ? (
+                                <Wand2 className="h-4 w-4" />
+                              ) : (
+                                <Lock className="h-4 w-4" />
+                              )}
+                              Rewrite tone
+                            </button>
+                          )}
+                          {isSender && message.messageType === "text" && !message.isDeletedForEveryone && (
+                            <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setEditingMessageId(String(message._id || message.id)); setReplyingToMessage(null); setText(message.content || ""); setActiveMessageMenuId(null); }}>
+                              <PenSquare className="h-4 w-4" />
+                              Edit
+                            </button>
+                          )}
+                          <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleDeleteMessage(message._id || message.id, "me"); setActiveMessageMenuId(null); }}>
+                            <Trash2 className="h-4 w-4" />
+                            Delete for me
+                          </button>
+                          {isSender && (
+                            <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm text-rose-300 transition hover:bg-rose-500/10" onClick={() => { handleDeleteMessage(message._id || message.id, "everyone"); setActiveMessageMenuId(null); }}>
+                              <Trash2 className="h-4 w-4" />
+                              Delete for everyone
+                            </button>
+                          )}
+                        </div>
+                      </>,
+                      document.body
+                    )}
+                </div>
+              )}
+            </div>
+            {message.messageType !== "system" && (
+              <ReactionSummary
+                reactions={message.reactions || []}
+                currentUserId={userInfo.id}
+                onToggleReaction={(emoji, isMine) =>
+                  handleToggleReaction(message, emoji, isMine)
+                }
+              />
+            )}
+            <div
+              className={`mt-2 flex items-center gap-1 text-[11px] text-slate-500 ${
+                isSender ? "justify-end" : "justify-start"
+              }`}
+            >
+              <span>{moment(message.timestamp).format("LT")}</span>
+              {isSender && renderStatusTick(message)}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderMessageBody = (message) => {
     const attachmentCaption = String(message.decryptedContent || "").trim();
+    const isAwaitingDecryption =
+      Boolean(message?.encryption?.enabled) &&
+      !message?.decryptionError &&
+      !String(message?.decryptedContent || message?.content || "").trim();
 
     if (message.messageType === "system") {
       return (
@@ -2664,6 +2976,15 @@ function Chat({
     }
 
     if (message.messageType === "text") {
+      if (isAwaitingDecryption) {
+        return (
+          <div className="space-y-2">
+            <div className="h-3.5 w-32 animate-pulse rounded-full bg-white/10" />
+            <div className="h-3.5 w-20 animate-pulse rounded-full bg-white/10" />
+          </div>
+        );
+      }
+
       return (
         <p className="whitespace-pre-wrap break-words text-[15px]">
           {renderTextWithMentions(message.content)}
@@ -2886,6 +3207,41 @@ function Chat({
                   ? "Online"
                   : "Offline"}
             </p>
+            {!isGroupChat && (
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span
+                  data-testid="chat-trust-status-badge"
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                    contactTrustState?.status === "verified"
+                      ? "bg-emerald-400/12 text-emerald-200"
+                      : contactTrustState?.status === "changed"
+                        ? "bg-rose-400/12 text-rose-200"
+                        : "bg-white/8 text-slate-300"
+                  }`}
+                >
+                  {contactTrustState?.status === "verified" ? (
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                  ) : contactTrustState?.status === "changed" ? (
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                  ) : (
+                    <ShieldQuestion className="h-3.5 w-3.5" />
+                  )}
+                  {loadingContactTrustState
+                    ? "Checking key..."
+                    : contactTrustState?.status === "verified"
+                      ? "Verified key"
+                      : contactTrustState?.status === "changed"
+                        ? "Key changed"
+                        : "Unverified key"}
+                </span>
+                <span
+                  data-testid="chat-trust-fingerprint"
+                  className="truncate text-[11px] text-slate-400"
+                >
+                  {formatFingerprintForDisplay(contactTrustState?.fingerprint)}
+                </span>
+              </div>
+            )}
             {!isMobile && !isGroupChat && selectedBirthdayReminder && (
               <button
                 type="button"
@@ -2904,6 +3260,27 @@ function Chat({
         </div>
 
         <div className={`flex items-center text-slate-400 ${isMobile ? "gap-2" : "gap-3"}`}>
+          {!isGroupChat && (
+            <button
+              type="button"
+              data-testid="chat-verify-key-button"
+              className={`themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex ${
+                contactTrustState?.status === "changed"
+                  ? "border border-rose-400/25 text-rose-200"
+                  : contactTrustState?.status === "verified"
+                    ? "text-emerald-200"
+                    : ""
+              }`}
+              onClick={
+                contactTrustState?.status === "verified"
+                  ? handleClearFingerprintVerification
+                  : handleVerifyCurrentFingerprint
+              }
+              title="Manage contact fingerprint verification"
+            >
+              {contactTrustState?.status === "verified" ? "Verified" : "Verify key"}
+            </button>
+          )}
           <button
             type="button"
             className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
@@ -3037,9 +3414,20 @@ function Chat({
           )}
         </div>
       </div>
+      {!isGroupChat && contactTrustState?.status === "changed" && (
+        <div className="border-b border-rose-400/15 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
+          This contact&apos;s security key has changed. Verify the new fingerprint before you share sensitive information.
+        </div>
+      )}
+      {isDecryptingMessages && (
+        <div className="border-b border-cyan-400/10 bg-cyan-400/6 px-4 py-2 text-xs text-cyan-100">
+          Decrypting secure messages in the background...
+        </div>
+      )}
 
-      <div className={`scrollbar-hide flex-1 overflow-x-hidden overflow-y-auto ${isMobile ? "px-3 py-4" : "px-7 py-8"}`}>
-        <div className={`flex w-full flex-col gap-6 ${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className={`shrink-0 ${isMobile ? "px-3 pt-4" : "px-7 pt-8"}`}>
+          <div className={`${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}>
           {pinnedMessages[0] && (
             <div className="themed-page-card flex items-center justify-between gap-4 rounded-[22px] px-4 py-3">
               <div className="min-w-0">
@@ -3057,305 +3445,14 @@ function Chat({
               </button>
             </div>
           )}
-
-          {filteredMessages.map((message, index) => {
-            const senderId =
-              typeof message.sender === "string"
-                ? message.sender
-                : message.sender?._id || message.sender?.id;
-            const isSender = senderId === userInfo.id;
-            const currentDate = moment(message.timestamp).format("YYYY-MM-DD");
-            const previousDate =
-              index > 0
-                ? moment(filteredMessages[index - 1].timestamp).format("YYYY-MM-DD")
-                : null;
-            const showDate = currentDate !== previousDate;
-
-            return (
-              <React.Fragment key={message._id || message.id || message.timestamp}>
-                {showDate && (
-                  <div className="themed-date-pill mx-auto rounded-full px-4 py-1.5 text-xs">
-                    {moment(message.timestamp).format("LL")}
-                  </div>
-                )}
-
-                <div className={`flex ${isSender ? "justify-end" : "justify-start"}`}>
-                  <div
-                    data-message-id={String(message._id || message.id)}
-                    className={`flex ${isMobile ? "max-w-[86%]" : "max-w-[72%]"} min-w-0 items-end gap-3 ${
-                      isSender ? "flex-row-reverse" : ""
-                    } ${focusedMessageId === String(message._id || message.id) ? "rounded-[28px] ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-transparent" : ""}`}
-                  >
-                    {!isSender && (
-                      <div className="themed-received-avatar flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold">
-                        {(selectedChatData?.firstName || "R")[0]}
-                      </div>
-                    )}
-
-                    <div className="min-w-0 max-w-full">
-                      {isGroupChat && !isSender && message.messageType !== "system" && (
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em] text-cyan-200/80">
-                          {typeof message.sender === "string"
-                            ? "Member"
-                            : [message.sender?.firstName, message.sender?.lastName]
-                                .filter(Boolean)
-                                .join(" ") || message.sender?.email || "Member"}
-                        </p>
-                      )}
-                      {message.isForwarded && (
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
-                          Forwarded
-                        </p>
-                      )}
-                      <div className="flex items-start gap-2">
-                        {message.messageType === "poll" ? (
-                          <div className="min-w-0">{renderMessageBody(message)}</div>
-                        ) : (
-                          <div
-                            className={`min-w-0 max-w-full overflow-hidden rounded-[22px] ${
-                              ["image", "video"].includes(String(message.messageType || "").toLowerCase())
-                                ? "p-2"
-                                : "px-4 py-3"
-                            } shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
-                              isSender
-                                ? "rounded-br-md bg-gradient-to-r from-[#ef5da8] to-[#ff9f43] text-white"
-                                : "themed-received-bubble rounded-bl-md"
-                            }`}
-                          >
-                            {message.replyPreview && (
-                              <button
-                                type="button"
-                                className={`mb-3 block w-full rounded-2xl border px-3 py-2 text-left ${
-                                  isSender
-                                    ? "border-white/20 bg-white/10"
-                                    : "border-white/10 bg-black/5"
-                                }`}
-                                onClick={() => setFocusedMessageId(String(message.replyPreview.messageId))}
-                              >
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-75">
-                                  Reply
-                                </p>
-                                <p className="mt-1 truncate text-sm">
-                                  {message.replyPreview.content}
-                                </p>
-                              </button>
-                            )}
-                            {renderMessageBody(message)}
-                            {message.editedAt && (
-                              <p className="mt-2 text-[11px] opacity-70">edited</p>
-                            )}
-                          </div>
-                        )}
-
-                        {message.messageType !== "system" && (
-                        <div className="relative shrink-0">
-                          <button
-                            type="button"
-                            className="themed-panel-soft flex h-8 w-8 items-center justify-center rounded-full opacity-80 transition hover:opacity-100"
-                            onClick={(event) => {
-                              const messageId = String(message._id || message.id);
-                              if (activeMessageMenuId === messageId) {
-                                setActiveMessageMenuId(null);
-                                return;
-                              }
-
-                              const rect = event.currentTarget.getBoundingClientRect();
-                              const menuWidth = 224;
-                              const menuHeight = 424;
-                              const viewportPadding = 12;
-                              const fitsBelow =
-                                rect.bottom + 8 + menuHeight <=
-                                window.innerHeight - viewportPadding;
-                              const preferRightAligned = isSender;
-                              const left = preferRightAligned
-                                ? Math.max(
-                                    viewportPadding,
-                                    Math.min(
-                                      rect.right - menuWidth,
-                                      window.innerWidth - menuWidth - viewportPadding
-                                    )
-                                  )
-                                : Math.max(
-                                    viewportPadding,
-                                    Math.min(
-                                      rect.left,
-                                      window.innerWidth - menuWidth - viewportPadding
-                                    )
-                                  );
-
-                              setActiveMessageMenuPosition({
-                                top: fitsBelow
-                                  ? rect.bottom + 8
-                                  : Math.max(viewportPadding, rect.top - menuHeight - 8),
-                                left,
-                              });
-                              setActiveMessageMenuId(messageId);
-                            }}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
-
-                          {activeMessageMenuId === String(message._id || message.id) && (
-                            createPortal(
-                              <>
-                                <div
-                                  className="fixed inset-0 z-[95]"
-                                  onClick={() => setActiveMessageMenuId(null)}
-                                />
-                                <div
-                                  className="themed-modal-surface fixed z-[100] w-56 rounded-[20px] p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]"
-                                  style={{
-                                    top: activeMessageMenuPosition.top,
-                                    left: activeMessageMenuPosition.left,
-                                  }}
-                                >
-                              <div className="mb-2 flex flex-wrap gap-2 px-2 pt-2">
-                                {QUICK_REACTIONS.map((emoji) => {
-                                  const isMine = (message.reactions || []).some(
-                                    (reaction) =>
-                                      String(reaction.userId?._id || reaction.userId) === String(userInfo.id) &&
-                                      reaction.emoji === emoji
-                                  );
-
-                                  return (
-                                    <button
-                                      key={emoji}
-                                      type="button"
-                                      className={`rounded-full px-2 py-1 text-lg transition ${
-                                        isMine ? "bg-cyan-400/15" : "bg-white/5"
-                                      }`}
-                                      onClick={() => {
-                                        handleToggleReaction(message, emoji, isMine);
-                                        setActiveMessageMenuId(null);
-                                      }}
-                                    >
-                                      {emoji}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setReplyingToMessage(message); setEditingMessageId(null); setText(""); setActiveMessageMenuId(null); }}>
-                                <ChevronDown className="h-4 w-4 rotate-90" />
-                                Reply
-                              </button>
-                              <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setForwardingMessage(message); setShowForwardModal(true); setActiveMessageMenuId(null); }}>
-                                <Forward className="h-4 w-4" />
-                                Forward
-                              </button>
-                              <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleToggleStar(message._id || message.id); setActiveMessageMenuId(null); }}>
-                                <Star className="h-4 w-4" />
-                                {starredMessageIdSet.has(String(message._id || message.id)) ? "Unstar" : "Star"}
-                              </button>
-                              <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleTogglePin(message._id || message.id); setActiveMessageMenuId(null); }}>
-                                <Pin className="h-4 w-4" />
-                                {(message.pinnedByChat || []).some((pin) => pin.conversationKey === selectedConversationKey) ? "Unpin" : "Pin"}
-                              </button>
-                              {message.messageType === "text" && !message.isDeletedForEveryone && (
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
-                                  onClick={() => {
-                                    if (!isPremiumUser) {
-                                      openPremiumModal();
-                                    } else {
-                                      runAIMessageAction({
-                                        route: AI_TRANSLATE_ROUTE,
-                                        payload: {
-                                          text: message.content,
-                                          targetLanguage:
-                                            userInfo?.aiPreferences?.translationLanguage || "English",
-                                        },
-                                        title: "Translate message",
-                                        subtitle: `Translated to ${userInfo?.aiPreferences?.translationLanguage || "English"}`,
-                                      });
-                                    }
-                                    setActiveMessageMenuId(null);
-                                  }}
-                                >
-                                  {isPremiumUser ? (
-                                    <Sparkles className="h-4 w-4" />
-                                  ) : (
-                                    <Lock className="h-4 w-4" />
-                                  )}
-                                  Translate
-                                </button>
-                              )}
-                              {message.messageType === "text" && !message.isDeletedForEveryone && (
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
-                                  onClick={() => {
-                                    if (!isPremiumUser) {
-                                      openPremiumModal();
-                                    } else {
-                                      runAIMessageAction({
-                                        route: AI_REWRITE_ROUTE,
-                                        payload: {
-                                          text: message.content,
-                                          tone: userInfo?.aiPreferences?.preferredTone || "friendly",
-                                        },
-                                        title: "Rewrite message",
-                                        subtitle: `Rewritten in a ${userInfo?.aiPreferences?.preferredTone || "friendly"} tone`,
-                                      });
-                                    }
-                                    setActiveMessageMenuId(null);
-                                  }}
-                                >
-                                  {isPremiumUser ? (
-                                    <Wand2 className="h-4 w-4" />
-                                  ) : (
-                                    <Lock className="h-4 w-4" />
-                                  )}
-                                  Rewrite tone
-                                </button>
-                              )}
-                              {isSender && message.messageType === "text" && !message.isDeletedForEveryone && (
-                                <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { setEditingMessageId(String(message._id || message.id)); setReplyingToMessage(null); setText(message.content || ""); setActiveMessageMenuId(null); }}>
-                                  <PenSquare className="h-4 w-4" />
-                                  Edit
-                                </button>
-                              )}
-                              <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5" onClick={() => { handleDeleteMessage(message._id || message.id, "me"); setActiveMessageMenuId(null); }}>
-                                <Trash2 className="h-4 w-4" />
-                                Delete for me
-                              </button>
-                              {isSender && (
-                                <button type="button" className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm text-rose-300 transition hover:bg-rose-500/10" onClick={() => { handleDeleteMessage(message._id || message.id, "everyone"); setActiveMessageMenuId(null); }}>
-                                  <Trash2 className="h-4 w-4" />
-                                  Delete for everyone
-                                </button>
-                              )}
-                                </div>
-                              </>,
-                              document.body
-                            )
-                          )}
-                        </div>
-                        )}
-                      </div>
-                      {message.messageType !== "system" && (
-                      <ReactionSummary
-                        reactions={message.reactions || []}
-                        currentUserId={userInfo.id}
-                        onToggleReaction={(emoji, isMine) => handleToggleReaction(message, emoji, isMine)}
-                      />
-                      )}
-                      <div
-                        className={`mt-2 flex items-center gap-1 text-[11px] text-slate-500 ${
-                          isSender ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <span>{moment(message.timestamp).format("LT")}</span>
-                        {isSender && renderStatusTick(message)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </React.Fragment>
-            );
-          })}
-          <div ref={endRef} />
+          </div>
         </div>
+        <VirtualizedMessageList
+          ref={messageListRef}
+          isMobile={isMobile}
+          messages={filteredMessages}
+          renderMessageRow={renderMessageRow}
+        />
       </div>
 
       <div
@@ -3393,7 +3490,7 @@ function Chat({
           )}
 
           {attachedFile.file && (
-            <div className="themed-page-card absolute bottom-20 left-1/2 z-20 flex w-[min(680px,calc(100vw-5rem))] -translate-x-1/2 flex-col items-center gap-5 rounded-[32px] p-6 shadow-[0_30px_90px_rgba(15,23,42,0.18)]">
+            <div className="themed-page-card absolute bottom-20 left-1/2 z-20 flex w-[min(680px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col items-center gap-5 rounded-[28px] p-4 shadow-[0_30px_90px_rgba(15,23,42,0.18)] md:w-[min(680px,calc(100vw-5rem))] md:rounded-[32px] md:p-6">
               <button
                 type="button"
                 className="themed-panel-soft absolute left-4 top-4 rounded-full p-2"
@@ -3415,6 +3512,7 @@ function Chat({
 
           <button
             type="button"
+            data-testid="chat-attachment-menu-button"
             className={`themed-composer-button flex items-center justify-center rounded-full transition ${isMobile ? "h-10 w-10" : "h-11 w-11"} ${
               showAttachmentMenu ? "themed-composer-button-active" : ""
             }`}
@@ -3427,7 +3525,9 @@ function Chat({
 
           {showEmoji && (
             <div className={`absolute z-20 ${isMobile ? "bottom-14 left-0" : "bottom-16 left-0"}`}>
-              <EmojiPicker onEmojiClick={handleEmojiClick} />
+              <Suspense fallback={<RouteLoader message="Loading emoji picker..." />}>
+                <EmojiPicker onEmojiClick={handleEmojiClick} />
+              </Suspense>
             </div>
           )}
 
@@ -3570,6 +3670,7 @@ function Chat({
           )}
 
           <Input
+            data-testid="chat-composer-input"
             placeholder={
               !isGroupChat && isUserBlocked()
                 ? "You cannot send messages to this user"
@@ -3623,6 +3724,7 @@ function Chat({
 
           <button
             type="button"
+            data-testid="chat-send-button"
             onClick={handleSendMessage}
             className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#22d3ee] text-white shadow-[0_18px_40px_rgba(34,211,238,0.2)] transition hover:scale-[1.02] ${isMobile ? "h-11 w-11 shrink-0" : "h-12 w-12"}`}
             disabled={!isGroupChat && (isUserBlocked() || !canMessageDirectUser)}
@@ -3632,11 +3734,13 @@ function Chat({
         </div>
       </div>
 
-      <CreatePollModal
-        isOpen={showPollModal}
-        onClose={() => setShowPollModal(false)}
-        onSubmit={handleCreatePoll}
-      />
+      <Suspense fallback={null}>
+        <CreatePollModal
+          isOpen={showPollModal}
+          onClose={() => setShowPollModal(false)}
+          onSubmit={handleCreatePoll}
+        />
+      </Suspense>
 
       <ForwardMessageModal
         isOpen={showForwardModal}
@@ -3651,7 +3755,12 @@ function Chat({
           if (!socket || !forwardingMessage) return;
 
           const payload = await buildForwardPayload(forwardingMessage, chat);
-          socket.emit("send_message", payload, (ack) => {
+          socket.emit("send_message", {
+            ...payload,
+            clientMessageId:
+              globalThis.crypto?.randomUUID?.() ||
+              `forward-${Date.now()}-${Math.random()}`,
+          }, (ack) => {
             if (!ack?.ok) {
               toast.error(ack?.error || "Failed to forward message.");
               return;
@@ -3679,66 +3788,76 @@ function Chat({
         onStartCall={startGroupMemberCall}
       />
 
-      <ImageModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        imageUrl={selectedImage}
-      />
+      <Suspense fallback={null}>
+        <ImageModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          imageUrl={selectedImage}
+        />
+      </Suspense>
 
-      <ScheduleMessageModal
-        isOpen={showScheduleModal}
-        onClose={() => setShowScheduleModal(false)}
-        selectedChatData={selectedChatData}
-        isGroupChat={isGroupChat}
-        conversationKey={selectedConversationKey}
-        draftText={text}
-        occasionType={scheduleOccasionType}
-      />
+      <Suspense fallback={null}>
+        <ScheduleMessageModal
+          isOpen={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          selectedChatData={selectedChatData}
+          isGroupChat={isGroupChat}
+          conversationKey={selectedConversationKey}
+          draftText={text}
+          occasionType={scheduleOccasionType}
+        />
+      </Suspense>
 
-      <AIAssistModal
-        isOpen={aiAssistModal.isOpen}
-        title={aiAssistModal.title}
-        subtitle={aiAssistModal.subtitle}
-        loading={aiAssistModal.loading}
-        value={aiAssistModal.value}
-        onClose={() =>
-          setAiAssistModal({
-            isOpen: false,
-            loading: false,
-            title: "",
-            subtitle: "",
-            value: "",
-          })
-        }
-        onUse={() => {
-          setText(aiAssistModal.value);
-          setAiAssistModal({
-            isOpen: false,
-            loading: false,
-            title: "",
-            subtitle: "",
-            value: "",
-          });
-        }}
-      />
+      <Suspense fallback={null}>
+        <AIAssistModal
+          isOpen={aiAssistModal.isOpen}
+          title={aiAssistModal.title}
+          subtitle={aiAssistModal.subtitle}
+          loading={aiAssistModal.loading}
+          value={aiAssistModal.value}
+          onClose={() =>
+            setAiAssistModal({
+              isOpen: false,
+              loading: false,
+              title: "",
+              subtitle: "",
+              value: "",
+            })
+          }
+          onUse={() => {
+            setText(aiAssistModal.value);
+            setAiAssistModal({
+              isOpen: false,
+              loading: false,
+              title: "",
+              subtitle: "",
+              value: "",
+            });
+          }}
+        />
+      </Suspense>
 
-      <AIAssistModal
-        isOpen={summaryModal.isOpen}
-        title="Chat summary"
-        subtitle="AI-generated recap of this conversation"
-        loading={summaryModal.loading}
-        value={summaryModal.value}
-        onClose={() => setSummaryModal({ isOpen: false, loading: false, value: "" })}
-        onUse={() => {
-          setText(summaryModal.value);
-          setSummaryModal({ isOpen: false, loading: false, value: "" });
-        }}
-      />
+      <Suspense fallback={null}>
+        <AIAssistModal
+          isOpen={summaryModal.isOpen}
+          title="Chat summary"
+          subtitle="AI-generated recap of this conversation"
+          loading={summaryModal.loading}
+          value={summaryModal.value}
+          onClose={() => setSummaryModal({ isOpen: false, loading: false, value: "" })}
+          onUse={() => {
+            setText(summaryModal.value);
+            setSummaryModal({ isOpen: false, loading: false, value: "" });
+          }}
+        />
+      </Suspense>
 
-      <PremiumUpgradeModal
-        isOpen={showPremiumModal}
-        onClose={() => setShowPremiumModal(false)}
-      />
+      <Suspense fallback={null}>
+        <PremiumUpgradeModal
+          isOpen={showPremiumModal}
+          onClose={() => setShowPremiumModal(false)}
+        />
+      </Suspense>
     </div>
   );
 }

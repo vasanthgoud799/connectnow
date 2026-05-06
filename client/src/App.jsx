@@ -1,9 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
-import Auth from "./components/Auth"
-import Home from "./components/Home";
 import { Navigate, Route,Routes } from "react-router-dom";
-import Profile from "./components/Profile";
 import { useAppStore } from "./store";
 import {
   apiClient,
@@ -13,6 +10,11 @@ import {
 import { CLERK_SYNC_ROUTE } from "./utils/constants";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import { ensureUserE2EEIdentity } from "./crypto/e2eeService";
+import RouteLoader from "./components/ui/RouteLoader";
+
+const Auth = lazy(() => import("./components/Auth"));
+const Home = lazy(() => import("./components/Home"));
+const Profile = lazy(() => import("./components/Profile"));
 
 
 const AppShellLoader = ({ message = "Preparing your conversations..." }) => (
@@ -203,17 +205,23 @@ function App() {
       <Routes>
         <Route path="/auth" element={
           <AuthRoute ready={authReady} isSignedIn={isSignedIn} userInfo={userInfo}>
-            <Auth />
+            <Suspense fallback={<RouteLoader message="Loading auth..." />}>
+              <Auth />
+            </Suspense>
           </AuthRoute>} 
         />
         <Route path="/home" element={
           <PrivateRoute ready={authReady} isSignedIn={isSignedIn} userInfo={userInfo}>
-            <Home />
+            <Suspense fallback={<RouteLoader message="Loading workspace..." />}>
+              <Home />
+            </Suspense>
           </PrivateRoute>} 
         />
         <Route path="/profile" element={
           <PrivateRoute ready={authReady} isSignedIn={isSignedIn} userInfo={userInfo}>
-            <Profile />
+            <Suspense fallback={<RouteLoader message="Loading profile..." />}>
+              <Profile />
+            </Suspense>
           </PrivateRoute>} 
         />
         <Route path="*" element={<Navigate to={isSignedIn ? "/home" : "/auth"} replace />} />

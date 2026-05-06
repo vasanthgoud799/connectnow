@@ -3,127 +3,20 @@ import {
   E2EE_CONVERSATION_KEYS_ROUTE,
   E2EE_PUBLIC_KEY_ROUTE,
 } from "@/utils/constants";
-import { decryptAESKey } from "./decryptAESKey";
-import { decryptMessage } from "./decryptMessage";
-import { encryptAESKey } from "./encryptAESKey";
-import { encryptMessage } from "./encryptMessage";
-import { generateKeys } from "./generateKeys";
-import { base64ToArrayBuffer, arrayBufferToBase64 } from "./helpers";
+import { resetCryptoWorker, runCryptoWorkerTask } from "./cryptoWorkerClient";
 import {
+  clearStoredE2EEData,
+  deleteStoredTrustRecord,
   getStoredDecryptedMessage,
   getStoredDecryptedMessages,
+  getStoredGroupSessionRecord,
   getStoredKeyPair,
+  getStoredTrustRecord,
   setStoredDecryptedMessage,
+  setStoredGroupSessionRecord,
   setStoredKeyPair,
+  setStoredTrustRecord,
 } from "./indexedDbKeyStore";
-
-const importRsaPublicKey = async (publicKeyJwk) =>
-  window.crypto.subtle.importKey(
-    "jwk",
-    publicKeyJwk,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    true,
-    ["encrypt"]
-  );
-
-const importRsaPrivateKey = async (privateKeyJwk) =>
-  window.crypto.subtle.importKey(
-    "jwk",
-    privateKeyJwk,
-    { name: "RSA-OAEP", hash: "SHA-256" },
-    true,
-    ["decrypt"]
-  );
-
-const importEcdhPublicKey = async (publicKeyJwk) =>
-  window.crypto.subtle.importKey(
-    "jwk",
-    publicKeyJwk,
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    []
-  );
-
-const importEcdhPrivateKey = async (privateKeyJwk) =>
-  window.crypto.subtle.importKey(
-    "jwk",
-    privateKeyJwk,
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveBits"]
-  );
-
-const importAesKeyFromRaw = async (rawKey) =>
-  window.crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
-
-const deriveWrappingKey = async ({ privateKey, publicKey }) => {
-  const sharedBits = await window.crypto.subtle.deriveBits(
-    {
-      name: "ECDH",
-      public: publicKey,
-    },
-    privateKey,
-    256
-  );
-
-  return importAesKeyFromRaw(sharedBits);
-};
-
-const wrapKeyWithEcdh = async ({ aesKey, recipientPublicKeyJwk }) => {
-  const ephemeralKeyPair = await window.crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveBits"]
-  );
-  const recipientPublicKey = await importEcdhPublicKey(recipientPublicKeyJwk);
-  const wrappingKey = await deriveWrappingKey({
-    privateKey: ephemeralKeyPair.privateKey,
-    publicKey: recipientPublicKey,
-  });
-  const keyWrapIv = window.crypto.getRandomValues(new Uint8Array(12));
-  const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
-  const encryptedKey = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv: keyWrapIv },
-    wrappingKey,
-    rawAesKey
-  );
-
-  return {
-    encryptedKey: arrayBufferToBase64(encryptedKey),
-    keyWrapIv: arrayBufferToBase64(keyWrapIv.buffer),
-    ephPublicKeyJwk: await window.crypto.subtle.exportKey("jwk", ephemeralKeyPair.publicKey),
-  };
-};
-
-const unwrapKeyWithEcdh = async ({
-  encryptedKey,
-  keyWrapIv,
-  ephPublicKeyJwk,
-  recipientPrivateKeyJwk,
-}) => {
-  const recipientPrivateKey = await importEcdhPrivateKey(recipientPrivateKeyJwk);
-  const ephemeralPublicKey = await importEcdhPublicKey(ephPublicKeyJwk);
-  const wrappingKey = await deriveWrappingKey({
-    privateKey: recipientPrivateKey,
-    publicKey: ephemeralPublicKey,
-  });
-  const rawAesKey = await window.crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv: new Uint8Array(base64ToArrayBuffer(keyWrapIv)),
-    },
-    wrappingKey,
-    base64ToArrayBuffer(encryptedKey)
-  );
-
-  return importAesKeyFromRaw(rawAesKey);
-};
 
 const toRecipientMap = (keys = []) =>
   keys.reduce((accumulator, keyRecord) => {
@@ -132,26 +25,25 @@ const toRecipientMap = (keys = []) =>
     return accumulator;
   }, {});
 
-const sessionStoragePrefix = "connectnow-e2ee-group-session";
-const getGroupSessionStorageKey = (groupId) =>
-  `${sessionStoragePrefix}:${String(groupId)}`;
 const MAX_GROUP_SESSION_HISTORY = 12;
-
-const getStoredGroupSession = (groupId) => {
-  if (typeof window === "undefined") return null;
-  const rawValue = window.localStorage.getItem(getGroupSessionStorageKey(groupId));
-  if (!rawValue) return null;
-
-  try {
-    return JSON.parse(rawValue);
-  } catch {
-    return null;
+const GROUP_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+const groupSessionMemoryCache = new Map();
+const getStoredGroupSession = async (groupId) => {
+  const normalizedGroupId = String(groupId);
+  if (groupSessionMemoryCache.has(normalizedGroupId)) {
+    return groupSessionMemoryCache.get(normalizedGroupId);
   }
+
+  const storedValue = await getStoredGroupSessionRecord(normalizedGroupId);
+  if (storedValue) {
+    groupSessionMemoryCache.set(normalizedGroupId, storedValue);
+  }
+
+  return storedValue;
 };
 
-const setStoredGroupSession = (groupId, session) => {
-  if (typeof window === "undefined") return;
-  const existingSession = getStoredGroupSession(groupId);
+const setStoredGroupSession = async (groupId, session) => {
+  const existingSession = await getStoredGroupSession(groupId);
   const existingHistory = existingSession?.sessionHistory || {};
   const nextHistory = {
     ...existingHistory,
@@ -163,16 +55,18 @@ const setStoredGroupSession = (groupId, session) => {
   const trimmedEntries = Object.entries(nextHistory).slice(-MAX_GROUP_SESSION_HISTORY);
   const normalizedSession = {
     ...session,
+    createdAt:
+      session?.createdAt ||
+      existingSession?.createdAt ||
+      new Date().toISOString(),
     sessionHistory: Object.fromEntries(trimmedEntries),
   };
-  window.localStorage.setItem(
-    getGroupSessionStorageKey(groupId),
-    JSON.stringify(normalizedSession)
-  );
+  groupSessionMemoryCache.set(String(groupId), normalizedSession);
+  await setStoredGroupSessionRecord(String(groupId), normalizedSession);
 };
 
-const getStoredGroupSessionCandidates = (groupId, preferredSessionId = null) => {
-  const storedSession = getStoredGroupSession(groupId);
+const getStoredGroupSessionCandidates = async (groupId, preferredSessionId = null) => {
+  const storedSession = await getStoredGroupSession(groupId);
   if (!storedSession) return [];
 
   const candidates = [];
@@ -205,7 +99,57 @@ const mediaObjectUrlCache = new Map();
 const mediaDecryptPromiseCache = new Map();
 const MAX_MEDIA_OBJECT_URL_CACHE_SIZE = 80;
 const messageDecryptCache = new Map();
+const messageDecryptPromiseCache = new Map();
 const MAX_MESSAGE_DECRYPT_CACHE_SIZE = 600;
+const conversationKeysCache = new Map();
+const conversationKeysPromiseCache = new Map();
+const CONVERSATION_KEYS_TTL_MS = 30 * 1000;
+const DECRYPT_BATCH_SIZE = 20;
+const FINGERPRINT_GROUP_SIZE = 6;
+
+const yieldToBrowser = () =>
+  new Promise((resolve) => {
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function"
+    ) {
+      window.requestAnimationFrame(() => resolve());
+      return;
+    }
+
+    setTimeout(resolve, 0);
+  });
+
+const decryptMessagesInBatches = async ({
+  messages,
+  currentUserId,
+  mapMessage,
+}) => {
+  const normalizedMessages = Array.isArray(messages) ? messages : [];
+  const decrypted = [];
+
+  for (let index = 0; index < normalizedMessages.length; index += 1) {
+    decrypted.push(
+      await mapMessage({
+        message: normalizedMessages[index],
+        currentUserId,
+      })
+    );
+
+    if ((index + 1) % DECRYPT_BATCH_SIZE === 0) {
+      await yieldToBrowser();
+    }
+  }
+
+  return decrypted;
+};
+
+export const formatFingerprintForDisplay = (fingerprint) =>
+  String(fingerprint || "")
+    .replace(/\s+/g, "")
+    .match(new RegExp(`.{1,${FINGERPRINT_GROUP_SIZE}}`, "g"))
+    ?.join(" ")
+    ?.trim() || "Unavailable";
 
 const inferMimeTypeFromEncryptedMedia = (message, mediaEnvelope = {}) => {
   const originalMimeType = String(mediaEnvelope.originalMimeType || "").toLowerCase();
@@ -300,8 +244,8 @@ const toCachedMessageShape = (message) => ({
   meta: message?.meta || null,
 });
 
-const buildDirectEnvelopeForAesKey = async ({
-  aesKey,
+const buildDirectEnvelopeForRawKey = async ({
+  rawKey,
   currentUserId,
   recipientUserId,
   recipientKeyRecord,
@@ -315,12 +259,17 @@ const buildDirectEnvelopeForAesKey = async ({
     throw error;
   }
 
-  const recipientWrapped = await wrapKeyWithEcdh({
-    aesKey,
+  const recipientWrapped = await runCryptoWorkerTask("wrapRawKeyWithEcdh", {
+    rawKey,
     recipientPublicKeyJwk: recipientKeyRecord.ecdhPublicKeyJwk,
   });
-  const selfPublicKey = await importRsaPublicKey(localKeyPair.publicKeyJwk);
-  const selfEncryptedKey = await encryptAESKey(aesKey, selfPublicKey);
+  const { encryptedKey: selfEncryptedKey } = await runCryptoWorkerTask(
+    "encryptRawAesKeyForRsa",
+    {
+      rawKey,
+      publicKeyJwk: localKeyPair.publicKeyJwk,
+    }
+  );
 
   return {
     enabled: true,
@@ -337,8 +286,8 @@ const buildDirectEnvelopeForAesKey = async ({
   };
 };
 
-const buildGroupEnvelopeForAesKey = async ({
-  aesKey,
+const buildGroupEnvelopeForRawKey = async ({
+  rawKey,
   groupId,
   conversationKeys,
   localKeyPair,
@@ -358,21 +307,11 @@ const buildGroupEnvelopeForAesKey = async ({
     throw error;
   }
 
-  let groupSession = getStoredGroupSession(groupId);
+  const now = Date.now();
+  let groupSession = await getStoredGroupSession(groupId);
   let encryptedKeys = { ...(groupSession?.encryptedKeys || {}) };
-  let sessionId = groupSession?.sessionId || `group:${groupId}:${Date.now()}`;
-  let shouldStoreRawKey = false;
-
-  const existingRawKey = groupSession?.rawKey
-    ? base64ToArrayBuffer(groupSession.rawKey)
-    : null;
-  if (existingRawKey) {
-    const currentRawKey = await window.crypto.subtle.exportKey("raw", aesKey);
-    shouldStoreRawKey =
-      arrayBufferToBase64(currentRawKey) !== arrayBufferToBase64(existingRawKey);
-  } else {
-    shouldStoreRawKey = true;
-  }
+  let sessionId = groupSession?.sessionId || `group:${groupId}:${now}`;
+  const shouldStoreRawKey = String(groupSession?.rawKey || "") !== String(rawKey || "");
 
   const recipientsMissingFromEnvelope = availableRecipients.filter(
     (recipientId) => !encryptedKeys[String(recipientId)]
@@ -384,26 +323,29 @@ const buildGroupEnvelopeForAesKey = async ({
     !groupSession?.encryptedKeys ||
     recipientsMissingFromEnvelope.length
   ) {
-    const rawKey = await window.crypto.subtle.exportKey("raw", aesKey);
     const recipientsToEncrypt = shouldStoreRawKey
       ? availableRecipients
       : recipientsMissingFromEnvelope;
 
     await Promise.all(
       recipientsToEncrypt.map(async (recipientId) => {
-        const recipientRsaKey = await importRsaPublicKey(
-          conversationKeys[recipientId].publicKeyJwk
-        );
-        encryptedKeys[String(recipientId)] = await encryptAESKey(aesKey, recipientRsaKey);
+        const { encryptedKey } = await runCryptoWorkerTask("encryptRawAesKeyForRsa", {
+          rawKey,
+          publicKeyJwk: conversationKeys[recipientId].publicKeyJwk,
+        });
+        encryptedKeys[String(recipientId)] = encryptedKey;
       })
     );
 
     groupSession = {
-      sessionId: shouldStoreRawKey ? `group:${groupId}:${Date.now()}` : sessionId,
-      rawKey: arrayBufferToBase64(rawKey),
+      sessionId: shouldStoreRawKey ? `group:${groupId}:${now}` : sessionId,
+      rawKey,
       encryptedKeys,
       messageCount: 0,
       keyVersion: Number(localKeyPair.keyVersion || 1),
+      createdAt: shouldStoreRawKey
+        ? new Date(now).toISOString()
+        : groupSession?.createdAt || new Date(now).toISOString(),
     };
     sessionId = groupSession.sessionId;
   } else {
@@ -411,7 +353,7 @@ const buildGroupEnvelopeForAesKey = async ({
     sessionId = groupSession.sessionId;
   }
 
-  setStoredGroupSession(groupId, {
+  await setStoredGroupSession(groupId, {
     ...groupSession,
     sessionId,
     encryptedKeys,
@@ -429,8 +371,8 @@ const buildGroupEnvelopeForAesKey = async ({
   };
 };
 
-const buildGroupRsaEnvelopeForAesKey = async ({
-  aesKey,
+const buildGroupRsaEnvelopeForRawKey = async ({
+  rawKey,
   conversationKeys,
   payloadType,
 }) => {
@@ -452,10 +394,11 @@ const buildGroupRsaEnvelopeForAesKey = async ({
   const encryptedKeys = {};
   await Promise.all(
     availableRecipients.map(async (recipientId) => {
-      const recipientRsaKey = await importRsaPublicKey(
-        conversationKeys[recipientId].publicKeyJwk
-      );
-      encryptedKeys[String(recipientId)] = await encryptAESKey(aesKey, recipientRsaKey);
+      const { encryptedKey } = await runCryptoWorkerTask("encryptRawAesKeyForRsa", {
+        rawKey,
+        publicKeyJwk: conversationKeys[recipientId].publicKeyJwk,
+      });
+      encryptedKeys[String(recipientId)] = encryptedKey;
     })
   );
 
@@ -469,8 +412,8 @@ const buildGroupRsaEnvelopeForAesKey = async ({
   };
 };
 
-const getOrCreateConversationAesKey = async ({
-  aesKey: providedAesKey = null,
+const getOrCreateConversationSessionKey = async ({
+  rawKey: providedRawKey = null,
   localKeyPair,
   conversationKeys,
   currentUserId,
@@ -479,57 +422,54 @@ const getOrCreateConversationAesKey = async ({
   payloadType,
 }) => {
   if (groupId) {
-    const existingSession = getStoredGroupSession(groupId);
+    const existingSession = await getStoredGroupSession(groupId);
+    const createdAtMs = existingSession?.createdAt
+      ? new Date(existingSession.createdAt).getTime()
+      : 0;
     const shouldRotateSession =
       !existingSession ||
       !existingSession.rawKey ||
-      Number(existingSession.messageCount || 0) >= 25;
+      Number(existingSession.messageCount || 0) >= 25 ||
+      Date.now() - createdAtMs >= GROUP_SESSION_MAX_AGE_MS;
 
     if (!shouldRotateSession) {
-      const aesKey = await importAesKeyFromRaw(
-        base64ToArrayBuffer(existingSession.rawKey)
-      );
-      const envelope = await buildGroupEnvelopeForAesKey({
-        aesKey,
+      const rawKey = existingSession.rawKey;
+      const envelope = await buildGroupEnvelopeForRawKey({
+        rawKey,
         groupId,
         conversationKeys,
         localKeyPair,
         payloadType,
       });
 
-      return { aesKey, envelope };
+      return { rawKey, envelope };
     }
   }
 
-  const aesKey =
-    providedAesKey ||
-    (await window.crypto.subtle.generateKey(
-      { name: "AES-GCM", length: 256 },
-      true,
-      ["encrypt", "decrypt"]
-    ));
+  const rawKey =
+    providedRawKey || (await runCryptoWorkerTask("generateAesKey")).rawKey;
 
   const envelope = !groupId
-    ? await buildDirectEnvelopeForAesKey({
-        aesKey,
+    ? await buildDirectEnvelopeForRawKey({
+        rawKey,
         currentUserId,
         recipientUserId: userId,
         recipientKeyRecord: conversationKeys[String(userId)],
         localKeyPair,
         payloadType,
       })
-    : await buildGroupEnvelopeForAesKey({
-        aesKey,
+    : await buildGroupEnvelopeForRawKey({
+        rawKey,
         groupId,
         conversationKeys,
         localKeyPair,
         payloadType,
       });
 
-  return { aesKey, envelope };
+  return { rawKey, envelope };
 };
 
-const resolveEnvelopeAesKey = async ({
+const resolveEnvelopeRawKey = async ({
   envelope,
   currentUserId,
   localKeyPair,
@@ -544,35 +484,45 @@ const resolveEnvelopeAesKey = async ({
       envelope?.selfEncryptedKey &&
       encryptedForRecipient === envelope.selfEncryptedKey
     ) {
-      const privateRsaKey = await importRsaPrivateKey(localKeyPair.privateKeyJwk);
-      return decryptAESKey(envelope.selfEncryptedKey, privateRsaKey);
+      return (
+        await runCryptoWorkerTask("decryptRawAesKeyForRsa", {
+          encryptedKey: envelope.selfEncryptedKey,
+          privateKeyJwk: localKeyPair.privateKeyJwk,
+        })
+      ).rawKey;
     }
 
     if (encryptedForRecipient && envelope?.ephPublicKeyJwk && envelope?.keyWrapIv) {
-      return unwrapKeyWithEcdh({
+      return (
+        await runCryptoWorkerTask("unwrapRawKeyWithEcdh", {
         encryptedKey: encryptedForRecipient,
         keyWrapIv: envelope.keyWrapIv,
         ephPublicKeyJwk: envelope.ephPublicKeyJwk,
         recipientPrivateKeyJwk: localKeyPair.ecdhPrivateKeyJwk,
-      });
+        })
+      ).rawKey;
     }
 
     if (envelope?.selfEncryptedKey) {
-      const privateRsaKey = await importRsaPrivateKey(localKeyPair.privateKeyJwk);
-      return decryptAESKey(envelope.selfEncryptedKey, privateRsaKey);
+      return (
+        await runCryptoWorkerTask("decryptRawAesKeyForRsa", {
+          encryptedKey: envelope.selfEncryptedKey,
+          privateKeyJwk: localKeyPair.privateKeyJwk,
+        })
+      ).rawKey;
     }
 
     throw new Error("No decryptable key found for direct message.");
   }
 
   if (envelope.algorithm === "group-session-aes-gcm-v2") {
-    let storedSession = groupId ? getStoredGroupSession(groupId) : null;
+    let storedSession = groupId ? await getStoredGroupSession(groupId) : null;
 
     if (
       storedSession?.sessionId === envelope.sessionId &&
       storedSession?.rawKey
     ) {
-      return importAesKeyFromRaw(base64ToArrayBuffer(storedSession.rawKey));
+      return storedSession.rawKey;
     }
 
     const encryptedKey =
@@ -580,10 +530,10 @@ const resolveEnvelopeAesKey = async ({
       envelope?.encryptedKeys?.get?.(String(currentUserId));
 
     if (!encryptedKey && groupId) {
-      const candidates = getStoredGroupSessionCandidates(groupId, envelope.sessionId);
+      const candidates = await getStoredGroupSessionCandidates(groupId, envelope.sessionId);
       if (candidates.length) {
         const fallbackCandidate = candidates[0];
-        return importAesKeyFromRaw(base64ToArrayBuffer(fallbackCandidate.rawKey));
+        return fallbackCandidate.rawKey;
       }
     }
 
@@ -591,21 +541,23 @@ const resolveEnvelopeAesKey = async ({
       throw new Error("No decryptable key found for group message.");
     }
 
-    const privateRsaKey = await importRsaPrivateKey(localKeyPair.privateKeyJwk);
-    const aesKey = await decryptAESKey(encryptedKey, privateRsaKey);
-    const rawKey = await window.crypto.subtle.exportKey("raw", aesKey);
+    const { rawKey } = await runCryptoWorkerTask("decryptRawAesKeyForRsa", {
+      encryptedKey,
+      privateKeyJwk: localKeyPair.privateKeyJwk,
+    });
 
     if (groupId) {
-      setStoredGroupSession(groupId, {
+      await setStoredGroupSession(groupId, {
         sessionId: envelope.sessionId,
-        rawKey: arrayBufferToBase64(rawKey),
+        rawKey,
         encryptedKeys: envelope.encryptedKeys || {},
         messageCount: 1,
         keyVersion: Number(envelope.keyVersion || 1),
+        createdAt: new Date().toISOString(),
       });
     }
 
-    return aesKey;
+    return rawKey;
   }
 
   const encryptedKey =
@@ -614,8 +566,12 @@ const resolveEnvelopeAesKey = async ({
   if (!encryptedKey) {
     throw new Error("No decryptable key found.");
   }
-  const privateRsaKey = await importRsaPrivateKey(localKeyPair.privateKeyJwk);
-  return decryptAESKey(encryptedKey, privateRsaKey);
+  return (
+    await runCryptoWorkerTask("decryptRawAesKeyForRsa", {
+      encryptedKey,
+      privateKeyJwk: localKeyPair.privateKeyJwk,
+    })
+  ).rawKey;
 };
 
 export const ensureUserE2EEIdentity = async (userInfo) => {
@@ -644,7 +600,7 @@ export const ensureUserE2EEIdentity = async (userInfo) => {
     return existing;
   }
 
-  const generated = await generateKeys();
+  const generated = await runCryptoWorkerTask("generateIdentityKeys");
   await apiClient.post(
     E2EE_PUBLIC_KEY_ROUTE,
     {
@@ -663,6 +619,83 @@ export const ensureUserE2EEIdentity = async (userInfo) => {
   return generated;
 };
 
+export const getLocalIdentitySummary = async (userId) => {
+  if (!userId) return null;
+  const localKeyPair = await getStoredKeyPair(userId);
+  if (!localKeyPair?.publicKeyJwk) {
+    return null;
+  }
+
+  return {
+    fingerprint: localKeyPair.fingerprint || null,
+    fingerprintDisplay: formatFingerprintForDisplay(localKeyPair.fingerprint),
+    ecdhFingerprint: localKeyPair.ecdhFingerprint || null,
+    ecdhFingerprintDisplay: formatFingerprintForDisplay(localKeyPair.ecdhFingerprint),
+    keyVersion: Number(localKeyPair.keyVersion || 1),
+    ecdhKeyVersion: Number(localKeyPair.ecdhKeyVersion || 1),
+  };
+};
+
+export const getDirectContactTrustState = async ({ currentUserId, contactId }) => {
+  if (!currentUserId || !contactId) {
+    return null;
+  }
+
+  const conversationKeys = await fetchConversationPublicKeys({ userId: contactId });
+  const keyRecord = conversationKeys[String(contactId)] || null;
+  if (!keyRecord?.publicKeyJwk) {
+    return {
+      fingerprint: null,
+      fingerprintDisplay: formatFingerprintForDisplay(null),
+      status: "missing",
+      verifiedAt: null,
+    };
+  }
+
+  const trustRecord = await getStoredTrustRecord(contactId);
+  const currentFingerprint = keyRecord.fingerprint || null;
+  const trustedFingerprint = trustRecord?.fingerprint || null;
+  const status =
+    trustedFingerprint && currentFingerprint && trustedFingerprint === currentFingerprint
+      ? "verified"
+      : trustedFingerprint && currentFingerprint && trustedFingerprint !== currentFingerprint
+        ? "changed"
+        : "unverified";
+
+  return {
+    fingerprint: currentFingerprint,
+    fingerprintDisplay: formatFingerprintForDisplay(currentFingerprint),
+    ecdhFingerprint: keyRecord.ecdhFingerprint || null,
+    ecdhFingerprintDisplay: formatFingerprintForDisplay(keyRecord.ecdhFingerprint),
+    status,
+    verifiedAt: trustRecord?.verifiedAt || null,
+    trustedFingerprint,
+    keyVersion: Number(keyRecord.keyVersion || 1),
+    ecdhKeyVersion: Number(keyRecord.ecdhKeyVersion || 1),
+  };
+};
+
+export const verifyDirectContactFingerprint = async ({
+  contactId,
+  fingerprint,
+  displayName = "",
+}) => {
+  if (!contactId || !fingerprint) {
+    throw new Error("Contact fingerprint is required for verification.");
+  }
+
+  return setStoredTrustRecord(contactId, {
+    fingerprint,
+    displayName,
+    verifiedAt: new Date().toISOString(),
+  });
+};
+
+export const clearDirectContactVerification = async (contactId) => {
+  if (!contactId) return;
+  await deleteStoredTrustRecord(contactId);
+};
+
 export const getLocalKeyPair = async (userId) => {
   const stored = await getStoredKeyPair(userId);
   if (!stored?.privateKeyJwk || !stored?.publicKeyJwk) {
@@ -673,12 +706,39 @@ export const getLocalKeyPair = async (userId) => {
 };
 
 export const fetchConversationPublicKeys = async ({ userId, groupId }) => {
-  const response = await apiClient.get(E2EE_CONVERSATION_KEYS_ROUTE, {
-    params: groupId ? { groupId } : { userId },
-    withCredentials: true,
-  });
+  const cacheKey = groupId ? `group:${groupId}` : `direct:${userId}`;
+  const now = Date.now();
+  const cachedEntry = conversationKeysCache.get(cacheKey);
 
-  return toRecipientMap(Array.isArray(response.data?.keys) ? response.data.keys : []);
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return cachedEntry.value;
+  }
+
+  if (conversationKeysPromiseCache.has(cacheKey)) {
+    return conversationKeysPromiseCache.get(cacheKey);
+  }
+
+  const request = apiClient
+    .get(E2EE_CONVERSATION_KEYS_ROUTE, {
+      params: groupId ? { groupId } : { userId },
+      withCredentials: true,
+    })
+    .then((response) => {
+      const normalizedKeys = toRecipientMap(
+        Array.isArray(response.data?.keys) ? response.data.keys : []
+      );
+      conversationKeysCache.set(cacheKey, {
+        value: normalizedKeys,
+        expiresAt: Date.now() + CONVERSATION_KEYS_TTL_MS,
+      });
+      return normalizedKeys;
+    })
+    .finally(() => {
+      conversationKeysPromiseCache.delete(cacheKey);
+    });
+
+  conversationKeysPromiseCache.set(cacheKey, request);
+  return request;
 };
 
 export const encryptTextForConversation = async ({
@@ -691,18 +751,19 @@ export const encryptTextForConversation = async ({
   const normalizedPlaintext = String(plaintext || "");
   const localKeyPair = await getLocalKeyPair(currentUserId);
   const conversationKeys = await fetchConversationPublicKeys({ userId, groupId });
-  let aesKey;
+  let rawKey;
   let iv;
   let ciphertext;
   let envelope;
 
   if (!groupId) {
-    const encryptedText = await encryptMessage(normalizedPlaintext);
-    aesKey = encryptedText.aesKey;
-    iv = encryptedText.iv;
-    ciphertext = encryptedText.ciphertext;
-    ({ envelope } = await getOrCreateConversationAesKey({
-      aesKey,
+    ({ rawKey } = await runCryptoWorkerTask("generateAesKey"));
+    ({ iv, ciphertext } = await runCryptoWorkerTask("encryptTextWithRawKey", {
+      plaintext: normalizedPlaintext,
+      rawKey,
+    }));
+    ({ envelope } = await getOrCreateConversationSessionKey({
+      rawKey,
       localKeyPair,
       conversationKeys,
       currentUserId,
@@ -711,7 +772,7 @@ export const encryptTextForConversation = async ({
       payloadType,
     }));
   } else {
-    ({ aesKey, envelope } = await getOrCreateConversationAesKey({
+    ({ rawKey, envelope } = await getOrCreateConversationSessionKey({
       localKeyPair,
       conversationKeys,
       currentUserId,
@@ -719,14 +780,10 @@ export const encryptTextForConversation = async ({
       groupId,
       payloadType,
     }));
-    const ivBytes = window.crypto.getRandomValues(new Uint8Array(12));
-    const cipherBytes = await window.crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: ivBytes },
-      aesKey,
-      new TextEncoder().encode(normalizedPlaintext)
-    );
-    iv = arrayBufferToBase64(ivBytes.buffer);
-    ciphertext = arrayBufferToBase64(cipherBytes);
+    ({ iv, ciphertext } = await runCryptoWorkerTask("encryptTextWithRawKey", {
+      plaintext: normalizedPlaintext,
+      rawKey,
+    }));
   }
 
   return {
@@ -751,20 +808,16 @@ export const encryptMediaFileForConversation = async ({
 
   const localKeyPair = await getLocalKeyPair(currentUserId);
   const conversationKeys = await fetchConversationPublicKeys({ userId, groupId });
-  const aesKey = await window.crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"]
-  );
+  const { rawKey } = await runCryptoWorkerTask("generateAesKey");
   const envelope = groupId
-    ? await buildGroupRsaEnvelopeForAesKey({
-        aesKey,
+    ? await buildGroupRsaEnvelopeForRawKey({
+        rawKey,
         conversationKeys,
         payloadType: "media-file",
       })
     : (
-        await getOrCreateConversationAesKey({
-          aesKey,
+        await getOrCreateConversationSessionKey({
+          rawKey,
           localKeyPair,
           conversationKeys,
           currentUserId,
@@ -774,16 +827,18 @@ export const encryptMediaFileForConversation = async ({
         })
       ).envelope;
 
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
   const plaintextBytes = await file.arrayBuffer();
-  const ciphertext = await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    aesKey,
-    plaintextBytes
+  const { buffer: ciphertextBuffer, iv } = await runCryptoWorkerTask(
+    "encryptBinaryWithRawKey",
+    {
+      rawKey,
+      buffer: plaintextBytes,
+    },
+    [plaintextBytes]
   );
 
   const encryptedFile = new File(
-    [new Blob([ciphertext], { type: "application/octet-stream" })],
+    [new Blob([ciphertextBuffer], { type: "application/octet-stream" })],
     `${file.name}.enc`,
     { type: "application/octet-stream" }
   );
@@ -792,7 +847,7 @@ export const encryptMediaFileForConversation = async ({
     encryptedFile,
     mediaEncryption: {
       ...envelope,
-      iv: arrayBufferToBase64(iv.buffer),
+      iv,
       payloadType: "media-file",
       originalMimeType: file.type || "application/octet-stream",
       originalFileName: file.name || "attachment",
@@ -839,31 +894,28 @@ export const decryptMediaAttachmentToObjectUrl = async ({
 
     const encryptedBytes = await response.arrayBuffer();
     const decryptBytesWithKey = async (aesKey) =>
-      window.crypto.subtle.decrypt(
-        {
-          name: "AES-GCM",
-          iv: new Uint8Array(base64ToArrayBuffer(mediaEnvelope.iv)),
-        },
-        aesKey,
-        encryptedBytes
-      );
+      runCryptoWorkerTask("decryptBinaryWithRawKey", {
+        rawKey: aesKey,
+        iv: mediaEnvelope.iv,
+        buffer: encryptedBytes,
+      });
 
-    let decryptedBytes;
+    let decryptedBytesBuffer;
 
     try {
-      const aesKey = await resolveEnvelopeAesKey({
+      const rawKey = await resolveEnvelopeRawKey({
         envelope: mediaEnvelope,
         currentUserId,
         localKeyPair,
         groupId,
       });
-      decryptedBytes = await decryptBytesWithKey(aesKey);
+      decryptedBytesBuffer = (await decryptBytesWithKey(rawKey)).buffer;
     } catch (primaryError) {
       if (
         mediaEnvelope?.algorithm === "group-session-aes-gcm-v2" &&
         groupId
       ) {
-        const candidates = getStoredGroupSessionCandidates(
+        const candidates = await getStoredGroupSessionCandidates(
           groupId,
           mediaEnvelope?.sessionId
         );
@@ -871,10 +923,7 @@ export const decryptMediaAttachmentToObjectUrl = async ({
         let recovered = null;
         for (const candidate of candidates) {
           try {
-            const candidateKey = await importAesKeyFromRaw(
-              base64ToArrayBuffer(candidate.rawKey)
-            );
-            recovered = await decryptBytesWithKey(candidateKey);
+            recovered = await decryptBytesWithKey(candidate.rawKey);
             break;
           } catch {
             // Try next cached group session candidate.
@@ -885,14 +934,14 @@ export const decryptMediaAttachmentToObjectUrl = async ({
           throw primaryError;
         }
 
-        decryptedBytes = recovered;
+        decryptedBytesBuffer = recovered?.buffer;
       } else {
         throw primaryError;
       }
     }
 
     const resolvedMimeType = inferMimeTypeFromEncryptedMedia(message, mediaEnvelope);
-    const blob = new Blob([decryptedBytes], {
+    const blob = new Blob([decryptedBytesBuffer], {
       type: resolvedMimeType,
     });
     const objectUrl = URL.createObjectURL(blob);
@@ -964,12 +1013,58 @@ export const preloadRecentEncryptedMedia = async ({
   return nextMessages;
 };
 
+const buildDecryptedMessageShape = ({ message, plaintext }) => {
+  if (message.messageType === "poll") {
+    const pollPayload = JSON.parse(plaintext);
+    const existingOptions = Array.isArray(message.meta?.poll?.options)
+      ? message.meta.poll.options
+      : [];
+
+    return toCachedMessageShape({
+      ...message,
+      meta: {
+        ...message.meta,
+        poll: {
+          ...(message.meta?.poll || {}),
+          question: pollPayload.question || "",
+          options: existingOptions.map((option, index) => ({
+            ...option,
+            text:
+              pollPayload.options?.[index]?.text ||
+              option.text ||
+              `Option ${index + 1}`,
+          })),
+        },
+      },
+      decryptedContent: plaintext,
+      isEncrypted: true,
+      decryptionError: false,
+    });
+  }
+
+  if (message.encryption?.payloadType === "attachment-caption") {
+    return toCachedMessageShape({
+      ...message,
+      decryptedContent: plaintext,
+      isEncrypted: true,
+      decryptionError: false,
+    });
+  }
+
+  return toCachedMessageShape({
+    ...message,
+    content: plaintext,
+    decryptedContent: plaintext,
+    isEncrypted: true,
+    decryptionError: false,
+  });
+};
+
 export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   if (!message?.encryption?.enabled) {
     return message;
   }
 
-  const localKeyPair = await getLocalKeyPair(currentUserId);
   const cacheKey = getMessageDecryptCacheKey(message);
   const cachedMessage = cacheKey ? messageDecryptCache.get(cacheKey) : null;
 
@@ -996,199 +1091,270 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
     }
   }
 
-  try {
-    let plaintext = "";
-    const groupId =
-      typeof message.group === "string"
-        ? message.group
-        : message.group?._id || message.group?.id || null;
-    const aesKey = await resolveEnvelopeAesKey({
-      envelope: message.encryption,
-      currentUserId,
-      localKeyPair,
-      groupId,
-    });
-
-    plaintext = await decryptMessage({
-      ciphertext: message.encryption.ciphertext,
-      iv: message.encryption.iv,
-      aesKey,
-    });
-
-    if (message.messageType === "poll") {
-      const pollPayload = JSON.parse(plaintext);
-      const existingOptions = Array.isArray(message.meta?.poll?.options)
-        ? message.meta.poll.options
-        : [];
-
-      const resolvedMessage = {
-        ...message,
-        meta: {
-          ...message.meta,
-          poll: {
-            ...(message.meta?.poll || {}),
-            question: pollPayload.question || "",
-            options: existingOptions.map((option, index) => ({
-              ...option,
-              text: pollPayload.options?.[index]?.text || option.text || `Option ${index + 1}`,
-            })),
-          },
-        },
-        decryptedContent: plaintext,
-        isEncrypted: true,
-        decryptionError: false,
-      };
-      if (cacheKey) {
-        const cachedValue = toCachedMessageShape(resolvedMessage);
-        messageDecryptCache.set(cacheKey, cachedValue);
-        trimMessageDecryptCache();
-        void setStoredDecryptedMessage(cacheKey, cachedValue);
-      }
-      return resolvedMessage;
-    }
-
-    if (message.encryption?.payloadType === "attachment-caption") {
-      const resolvedMessage = {
-        ...message,
-        decryptedContent: plaintext,
-        isEncrypted: true,
-        decryptionError: false,
-      };
-      if (cacheKey) {
-        const cachedValue = toCachedMessageShape(resolvedMessage);
-        messageDecryptCache.set(cacheKey, cachedValue);
-        trimMessageDecryptCache();
-        void setStoredDecryptedMessage(cacheKey, cachedValue);
-      }
-      return resolvedMessage;
-    }
-
-    const resolvedMessage = {
+  if (cacheKey && messageDecryptPromiseCache.has(cacheKey)) {
+    const inFlightMessage = await messageDecryptPromiseCache.get(cacheKey);
+    return {
       ...message,
-      content: plaintext,
-      decryptedContent: plaintext,
-      isEncrypted: true,
-      decryptionError: false,
+      ...inFlightMessage,
     };
-    if (cacheKey) {
-      const cachedValue = toCachedMessageShape(resolvedMessage);
-      messageDecryptCache.set(cacheKey, cachedValue);
-      trimMessageDecryptCache();
-      void setStoredDecryptedMessage(cacheKey, cachedValue);
-    }
-    return resolvedMessage;
-  } catch (error) {
-    if (
-      message?.encryption?.algorithm === "group-session-aes-gcm-v2" &&
-      (typeof message.group === "string" || message.group?._id || message.group?.id)
-    ) {
+  }
+
+  const decryptPromise = (async () => {
+    const localKeyPair = await getLocalKeyPair(currentUserId);
+
+    try {
+      let plaintext = "";
       const groupId =
         typeof message.group === "string"
           ? message.group
-          : message.group?._id || message.group?.id;
-      const candidates = getStoredGroupSessionCandidates(
+          : message.group?._id || message.group?.id || null;
+      const rawKey = await resolveEnvelopeRawKey({
+        envelope: message.encryption,
+        currentUserId,
+        localKeyPair,
         groupId,
-        message?.encryption?.sessionId
-      );
+      });
 
-      for (const candidate of candidates) {
-        try {
-          const candidateKey = await importAesKeyFromRaw(
-            base64ToArrayBuffer(candidate.rawKey)
-          );
-          const plaintext = await decryptMessage({
-            ciphertext: message.encryption.ciphertext,
-            iv: message.encryption.iv,
-            aesKey: candidateKey,
-          });
+      plaintext = (
+        await runCryptoWorkerTask("decryptTextWithRawKey", {
+        ciphertext: message.encryption.ciphertext,
+        iv: message.encryption.iv,
+        rawKey,
+        })
+      ).plaintext;
 
-          if (message.messageType === "poll") {
-            const pollPayload = JSON.parse(plaintext);
-            const existingOptions = Array.isArray(message.meta?.poll?.options)
-              ? message.meta.poll.options
-              : [];
+      return buildDecryptedMessageShape({ message, plaintext });
+    } catch (error) {
+      if (
+        message?.encryption?.algorithm === "group-session-aes-gcm-v2" &&
+        (typeof message.group === "string" || message.group?._id || message.group?.id)
+      ) {
+        const groupId =
+          typeof message.group === "string"
+            ? message.group
+            : message.group?._id || message.group?.id;
+        const candidates = await getStoredGroupSessionCandidates(
+          groupId,
+          message?.encryption?.sessionId
+        );
 
-            const resolvedMessage = {
-              ...message,
-              meta: {
-                ...message.meta,
-                poll: {
-                  ...(message.meta?.poll || {}),
-                  question: pollPayload.question || "",
-                  options: existingOptions.map((option, index) => ({
-                    ...option,
-                    text: pollPayload.options?.[index]?.text || option.text || `Option ${index + 1}`,
-                  })),
-                },
-              },
-              decryptedContent: plaintext,
-              isEncrypted: true,
-              decryptionError: false,
-            };
-            if (cacheKey) {
-              const cachedValue = toCachedMessageShape(resolvedMessage);
-              messageDecryptCache.set(cacheKey, cachedValue);
-              trimMessageDecryptCache();
-              void setStoredDecryptedMessage(cacheKey, cachedValue);
-            }
-            return resolvedMessage;
+        for (const candidate of candidates) {
+          try {
+            const plaintext = (
+              await runCryptoWorkerTask("decryptTextWithRawKey", {
+              ciphertext: message.encryption.ciphertext,
+              iv: message.encryption.iv,
+              rawKey: candidate.rawKey,
+              })
+            ).plaintext;
+
+            return buildDecryptedMessageShape({ message, plaintext });
+          } catch {
+            // Try next cached group session candidate.
           }
-
-          if (message.encryption?.payloadType === "attachment-caption") {
-            const resolvedMessage = {
-              ...message,
-              decryptedContent: plaintext,
-              isEncrypted: true,
-              decryptionError: false,
-            };
-            if (cacheKey) {
-              const cachedValue = toCachedMessageShape(resolvedMessage);
-              messageDecryptCache.set(cacheKey, cachedValue);
-              trimMessageDecryptCache();
-              void setStoredDecryptedMessage(cacheKey, cachedValue);
-            }
-            return resolvedMessage;
-          }
-
-          const resolvedMessage = {
-            ...message,
-            content: plaintext,
-            decryptedContent: plaintext,
-            isEncrypted: true,
-            decryptionError: false,
-          };
-          if (cacheKey) {
-            const cachedValue = toCachedMessageShape(resolvedMessage);
-            messageDecryptCache.set(cacheKey, cachedValue);
-            trimMessageDecryptCache();
-            void setStoredDecryptedMessage(cacheKey, cachedValue);
-          }
-          return resolvedMessage;
-        } catch {
-          // Try next cached group session candidate.
         }
       }
+
+      console.error("E2EE decrypt failed:", error);
+      return toCachedMessageShape({
+        content:
+          message.messageType === "text"
+            ? "[Unable to decrypt message on this device]"
+            : message.content,
+        decryptionError: true,
+        isEncrypted: true,
+      });
+    }
+  })();
+
+  if (cacheKey) {
+    messageDecryptPromiseCache.set(cacheKey, decryptPromise);
+  }
+
+  try {
+    const resolvedMessage = await decryptPromise;
+
+    if (cacheKey) {
+      messageDecryptCache.set(cacheKey, resolvedMessage);
+      trimMessageDecryptCache();
+      void setStoredDecryptedMessage(cacheKey, resolvedMessage);
     }
 
-    console.error("E2EE decrypt failed:", error);
     return {
       ...message,
-      content:
-        message.messageType === "text"
-          ? "[Unable to decrypt message on this device]"
-          : message.content,
-      decryptionError: true,
-      isEncrypted: true,
+      ...resolvedMessage,
     };
+  } finally {
+    if (cacheKey) {
+      messageDecryptPromiseCache.delete(cacheKey);
+    }
   }
 };
 
-export const decryptIncomingMessages = async ({ messages, currentUserId }) =>
-  Promise.all(
-    (Array.isArray(messages) ? messages : []).map((message) =>
-      decryptIncomingMessage({ message, currentUserId })
-    )
-  );
+export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
+  const normalizedMessages = Array.isArray(messages) ? messages : [];
+  if (!currentUserId || !normalizedMessages.length) {
+    return normalizedMessages;
+  }
+
+  const cacheKeys = normalizedMessages
+    .map((message) => getMessageDecryptCacheKey(message))
+    .filter(Boolean);
+  let persistedEntries = {};
+  try {
+    persistedEntries = await getStoredDecryptedMessages(cacheKeys);
+  } catch {
+    persistedEntries = {};
+  }
+
+  let localKeyPair = null;
+  try {
+    localKeyPair = await getLocalKeyPair(currentUserId);
+  } catch {
+    localKeyPair = null;
+  }
+
+  const decrypted = [];
+
+  for (let start = 0; start < normalizedMessages.length; start += DECRYPT_BATCH_SIZE) {
+    const slice = normalizedMessages.slice(start, start + DECRYPT_BATCH_SIZE);
+    const preparedBatch = await Promise.all(
+      slice.map(async (message) => {
+        if (!message?.encryption?.enabled) {
+          return { type: "resolved", message };
+        }
+
+        const cacheKey = getMessageDecryptCacheKey(message);
+        const cachedValue =
+          (cacheKey && messageDecryptCache.get(cacheKey)) ||
+          (cacheKey ? persistedEntries[cacheKey] : null);
+
+        if (cachedValue) {
+          if (cacheKey && !messageDecryptCache.has(cacheKey)) {
+            messageDecryptCache.set(cacheKey, cachedValue);
+            trimMessageDecryptCache();
+          }
+
+          return {
+            type: "resolved",
+            message: {
+              ...message,
+              ...cachedValue,
+            },
+          };
+        }
+
+        if (!localKeyPair) {
+          return {
+            type: "resolved",
+            message: {
+              ...message,
+              content:
+                message.messageType === "text"
+                  ? "[Unable to decrypt message on this device]"
+                  : message.content,
+              decryptionError: true,
+              isEncrypted: true,
+            },
+          };
+        }
+
+        const groupId =
+          typeof message.group === "string"
+            ? message.group
+            : message.group?._id || message.group?.id || null;
+
+        try {
+          const rawKey = await resolveEnvelopeRawKey({
+            envelope: message.encryption,
+            currentUserId,
+            localKeyPair,
+            groupId,
+          });
+
+          return {
+            type: "decrypt",
+            cacheKey,
+            groupId,
+            message,
+            rawKey,
+          };
+        } catch (error) {
+          return {
+            type: "fallback",
+            error,
+            message,
+          };
+        }
+      })
+    );
+
+    const decryptItems = preparedBatch.filter((item) => item.type === "decrypt");
+    let plaintexts = [];
+
+    if (decryptItems.length) {
+      try {
+        plaintexts = (
+          await runCryptoWorkerTask("decryptMessageBatch", {
+            items: decryptItems.map((item) => ({
+              ciphertext: item.message.encryption.ciphertext,
+              iv: item.message.encryption.iv,
+              rawKey: item.rawKey,
+            })),
+          })
+        ).results;
+      } catch {
+        plaintexts = await Promise.all(
+          decryptItems.map(async (item) => {
+            const result = await runCryptoWorkerTask("decryptTextWithRawKey", {
+              ciphertext: item.message.encryption.ciphertext,
+              iv: item.message.encryption.iv,
+              rawKey: item.rawKey,
+            });
+            return result.plaintext;
+          })
+        );
+      }
+    }
+
+    let decryptIndex = 0;
+    for (const item of preparedBatch) {
+      if (item.type === "resolved") {
+        decrypted.push(item.message);
+        continue;
+      }
+
+      if (item.type === "decrypt") {
+        try {
+          const plaintext = plaintexts[decryptIndex];
+          decryptIndex += 1;
+          const resolvedMessage = buildDecryptedMessageShape({
+            message: item.message,
+            plaintext,
+          });
+          if (item.cacheKey) {
+            messageDecryptCache.set(item.cacheKey, resolvedMessage);
+            trimMessageDecryptCache();
+            void setStoredDecryptedMessage(item.cacheKey, resolvedMessage);
+          }
+          decrypted.push({
+            ...item.message,
+            ...resolvedMessage,
+          });
+        } catch {
+          decrypted.push(await decryptIncomingMessage({ message: item.message, currentUserId }));
+        }
+        continue;
+      }
+
+      decrypted.push(await decryptIncomingMessage({ message: item.message, currentUserId }));
+    }
+
+    await yieldToBrowser();
+  }
+
+  return decrypted;
+};
 
 export const hydrateMessagesFromCache = async ({ messages }) => {
   const normalizedMessages = Array.isArray(messages) ? messages : [];
@@ -1265,8 +1431,10 @@ export const decryptChatSummaries = async ({ chats, currentUserId }) => {
     return Array.isArray(chats) ? chats : [];
   }
 
-  return Promise.all(
-    (Array.isArray(chats) ? chats : []).map(async (chat) => {
+  return decryptMessagesInBatches({
+    messages: Array.isArray(chats) ? chats : [],
+    currentUserId,
+    mapMessage: async ({ message: chat, currentUserId: activeUserId }) => {
       const lastMessage = chat?.lastMessage;
       if (!lastMessage?.encryption?.enabled) {
         return chat;
@@ -1279,7 +1447,7 @@ export const decryptChatSummaries = async ({ chats, currentUserId }) => {
             _id: lastMessage.messageId,
             group: chat?.group?._id || null,
           },
-          currentUserId,
+          currentUserId: activeUserId,
         });
 
         return {
@@ -1294,8 +1462,8 @@ export const decryptChatSummaries = async ({ chats, currentUserId }) => {
       } catch {
         return chat;
       }
-    })
-  );
+    },
+  });
 };
 
 export const hydrateChatSummariesFromCache = async ({ chats }) => {
@@ -1352,4 +1520,22 @@ export const hydrateChatSummariesFromCache = async ({ chats }) => {
       },
     };
   });
+};
+
+export const clearE2EEClientState = async () => {
+  mediaObjectUrlCache.forEach((value) => {
+    if (value?.objectUrl) {
+      URL.revokeObjectURL(value.objectUrl);
+    }
+  });
+  mediaObjectUrlCache.clear();
+  mediaDecryptPromiseCache.clear();
+  messageDecryptCache.clear();
+  messageDecryptPromiseCache.clear();
+  conversationKeysCache.clear();
+  conversationKeysPromiseCache.clear();
+  groupSessionMemoryCache.clear();
+
+  await clearStoredE2EEData();
+  await resetCryptoWorker();
 };

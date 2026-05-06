@@ -51,6 +51,11 @@ const replyPreviewSchema = new mongoose.Schema(
       enum: ["text", "image", "video", "audio", "document", "system", "poll"],
       required: true,
     },
+    clientMessageId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -323,6 +328,14 @@ const messageSchema = new mongoose.Schema(
 );
 
 messageSchema.index({ conversationKey: 1, createdAt: 1 });
+messageSchema.index(
+  { sender: 1, conversationKey: 1, clientMessageId: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { clientMessageId: { $type: "string" } },
+  }
+);
 messageSchema.index({ recipient: 1, status: 1, createdAt: 1 });
 messageSchema.index({ sender: 1, createdAt: -1 });
 messageSchema.index({ group: 1, createdAt: 1 });

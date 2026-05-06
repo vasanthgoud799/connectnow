@@ -8,6 +8,8 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/AuthRoutes.js";
 import contactsRoutes from "./routes/ContactsRoutes.js";
 import setupSocket from "./socket.js";
+import { initializeRealtimeState } from "./services/DistributedRealtimeService.js";
+import { getRealtimeStateStatus } from "./services/DistributedRealtimeService.js";
 import messagesRoutes from "./routes/MessagesRoutes.js";
 import detailRoutes from "./routes/ContactDetailRoutes.js";
 import callsRoutes from "./routes/CallsRoutes.js";
@@ -24,6 +26,8 @@ import e2eeRoutes from "./routes/E2EERoutes.js";
 import securityRoutes from "./routes/SecurityRoutes.js";
 
 import { initializeScheduledMessaging } from "./services/ScheduledMessageService.js";
+import { getSocketRedisAdapterStatus } from "./services/SocketRedisAdapter.js";
+import { logRuntimeEvent } from "./utils/RuntimeLogger.js";
 
 import {
   attachRequestContext,
@@ -32,6 +36,7 @@ import {
   notFoundHandler,
   rejectNoSqlInjection,
   securityHeaders,
+  trackRequestLatency,
   validateHttpMethod,
 } from "./middlewares/SecurityMiddleware.js";
 
@@ -83,6 +88,7 @@ app.use(
 app.use(securityHeaders);
 app.use(validateHttpMethod);
 app.use(attachRequestContext);
+app.use(trackRequestLatency);
 
 /* ==================================================
    FIX: AUTH ROUTES BEFORE RATE LIMITER
@@ -90,10 +96,7 @@ app.use(attachRequestContext);
 app.use("/api/auth", authRoutes);
 
 /* Apply limiter AFTER auth */
-// app.use(globalRateLimiter);
-
-/* -------------------- Static / Raw -------------------- */
-app.use("/uploads/files", express.static("uploads/files"));
+app.use(globalRateLimiter);
 
 app.use(
   "/api/subscription/webhook",
@@ -172,21 +175,41 @@ const cleanupLegacyUserIndexes = async () => {
 /* -------------------- Start Server -------------------- */
 const startServer = async () => {
   try {
-    await mongoose.connect(databaseUrl);
-
-    console.log("Database connection successful");
-
-    await cleanupLegacyUserIndexes();
-
-    const server = app.listen(port, () => {
-      console.log(`Server is running on port ${port}`);
+    logRuntimeEvent("info", "server.starting", {
+      port,
+      environment: runtimeConfig.runtimeEnvironment,
+      allowedOriginsCount: allowedOrigins.length,
     });
 
-    setupSocket(server);
+    await mongoose.connect(databaseUrl);
+
+    logRuntimeEvent("info", "database.connected", {
+      host: mongoose.connection.host,
+      dbName: mongoose.connection.name,
+    });
+
+    await cleanupLegacyUserIndexes();
+    await initializeRealtimeState();
+
+    const server = app.listen(port, () => {
+      const realtimeStatus = getRealtimeStateStatus();
+      const adapterStatus = getSocketRedisAdapterStatus();
+      logRuntimeEvent("info", "server.ready", {
+        port,
+        environment: runtimeConfig.runtimeEnvironment,
+        realtimeMode: realtimeStatus.mode,
+        redisUrlConfigured: realtimeStatus.redisUrlConfigured,
+        socketRedisAdapterStatus: adapterStatus.status,
+      });
+    });
+
+    await setupSocket(server);
 
     await initializeScheduledMessaging();
   } catch (err) {
-    console.error("Database connection failed:", err.message);
+    logRuntimeEvent("error", "server.start_failed", {
+      message: err.message,
+    });
     process.exit(1);
   }
 };

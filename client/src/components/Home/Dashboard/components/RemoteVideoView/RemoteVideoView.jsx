@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 
 const RemoteVideoView = (props) => {
   const { remoteStream } = props;
@@ -23,7 +23,7 @@ const RemoteVideoView = (props) => {
 
   return (
     <div className="h-full w-full">
-      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <audio ref={remoteAudioRef} autoPlay />
       <video
         className="h-full w-full object-cover"
         ref={remoteVideoRef}

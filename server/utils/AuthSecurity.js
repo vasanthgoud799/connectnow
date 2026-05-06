@@ -17,6 +17,7 @@ const getSessionTouchIntervalMs = () =>
 
 const getJwtIssuer = () => process.env.JWT_ISSUER || "connectnow-api";
 const getJwtAudience = () => process.env.JWT_AUDIENCE || "connectnow-web";
+const getMediaTokenSecret = () => process.env.MEDIA_TOKEN_SECRET || getJwtSigningKey();
 const getRateLimitWindowMs = () =>
   Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000);
 const AUTH_IP_LIMIT = Number(process.env.AUTH_IP_LIMIT || 30);
@@ -380,6 +381,33 @@ export const verifyAppJwt = (token) => {
 
   throw lastError || new Error("JWT verification failed.");
 };
+
+export const createSignedMediaAccessToken = ({
+  messageId,
+  storageProvider,
+  storagePath,
+  expiresInSeconds = Number(process.env.MEDIA_URL_TTL_SECONDS || 300),
+}) =>
+  jwt.sign(
+    {
+      messageId: String(messageId),
+      storageProvider: storageProvider || "local",
+      storagePath: storagePath || "",
+      scope: "media_access",
+    },
+    getMediaTokenSecret(),
+    {
+      expiresIn: expiresInSeconds,
+      issuer: getJwtIssuer(),
+      audience: "connectnow-media",
+    }
+  );
+
+export const verifySignedMediaAccessToken = (token) =>
+  jwt.verify(token, getMediaTokenSecret(), {
+    issuer: getJwtIssuer(),
+    audience: "connectnow-media",
+  });
 
 export const revokeSession = async ({ sessionId, reason = "logout" }) => {
   if (!sessionId) return null;

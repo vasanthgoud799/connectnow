@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createUploadIntent,
   getGroupImage,
+  getMessageMedia,
   getUserImage,
 } from "../controllers/MediaController.js";
 import { verifyToken } from "../middlewares/AuthMiddleware.js";
@@ -16,6 +17,7 @@ const mediaRoutes = Router();
 
 mediaRoutes.get("/user/:userId/image", getUserImage);
 mediaRoutes.get("/group/:groupId/image", getGroupImage);
+mediaRoutes.get("/messages/:messageId/file", getMessageMedia);
 mediaRoutes.post(
   "/upload-intent",
   verifyToken,

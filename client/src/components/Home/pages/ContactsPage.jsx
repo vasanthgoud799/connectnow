@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Gift, Search, UserPlus } from "lucide-react";
 
 import { apiClient } from "@/lib/api-client";
 import { LIST_CONTACTS_ROUTE, UPCOMING_BIRTHDAYS_ROUTE } from "@/utils/constants";
-import AddUser from "../List/ChatList/AddUser";
+import RouteLoader from "@/components/ui/RouteLoader";
 import { useAppStore } from "@/store";
+
+const AddUser = lazy(() => import("../List/ChatList/AddUser"));
 
 function ContactsPage({ onOpenChat }) {
   const [contacts, setContacts] = useState([]);
@@ -137,13 +139,15 @@ function ContactsPage({ onOpenChat }) {
       </div>
 
       {showAddUser && (
-        <AddUser
-          onFriendAdded={() => {
-            loadContacts();
-            setShowAddUser(false);
-          }}
-          onClose={() => setShowAddUser(false)}
-        />
+        <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
+          <AddUser
+            onFriendAdded={() => {
+              loadContacts();
+              setShowAddUser(false);
+            }}
+            onClose={() => setShowAddUser(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Crown,
@@ -26,8 +26,10 @@ import {
 } from "@/utils/constants";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import RouteLoader from "@/components/ui/RouteLoader";
 import { toast } from "sonner";
-import PremiumUpgradeModal from "../PremiumUpgradeModal";
+
+const PremiumUpgradeModal = lazy(() => import("../PremiumUpgradeModal"));
 
 function SettingsPage() {
   const navigate = useNavigate();
@@ -484,10 +486,12 @@ function SettingsPage() {
         </div>
       </div>
 
-      <PremiumUpgradeModal
-        isOpen={showPremiumModal}
-        onClose={() => setShowPremiumModal(false)}
-      />
+      <Suspense fallback={<RouteLoader message="Loading premium options..." />}>
+        <PremiumUpgradeModal
+          isOpen={showPremiumModal}
+          onClose={() => setShowPremiumModal(false)}
+        />
+      </Suspense>
     </div>
   );
 }

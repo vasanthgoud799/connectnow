@@ -22,6 +22,12 @@ import { useAppStore } from "@/store";
 import * as wss from "../wssConnection/wssConnection";
 import { getLocalStream } from "./webRTCHandler";
 
+const isDevelopment = import.meta.env.DEV;
+const logGroupCallDebug = (message, metadata = {}) => {
+  if (!isDevelopment) return;
+  console.debug(`[group-call] ${message}`, metadata);
+};
+
 const groupCallContext = {
   sessionId: null,
   groupId: null,
@@ -118,7 +124,19 @@ const createPeerConnection = (remoteUserId) => {
     peerConnection.addTrack(track, localStream);
   });
 
-  peerConnection.ontrack = ({ streams: [stream] }) => {
+  if (!localStream.getAudioTracks().length) {
+    logGroupCallDebug("missing_local_audio_track", { remoteUserId });
+  }
+  if (groupCallContext.callType === "video" && !localStream.getVideoTracks().length) {
+    logGroupCallDebug("missing_local_video_track", { remoteUserId });
+  }
+
+  peerConnection.ontrack = ({ track, streams: [stream] }) => {
+    logGroupCallDebug("remote_track_received", {
+      remoteUserId,
+      kind: track?.kind,
+      hasStream: Boolean(stream),
+    });
     store.dispatch(
       upsertGroupCallParticipant({
         userId: remoteUserId,
@@ -138,6 +156,10 @@ const createPeerConnection = (remoteUserId) => {
   };
 
   peerConnection.onconnectionstatechange = () => {
+    logGroupCallDebug("peer_connection_state_changed", {
+      remoteUserId,
+      connectionState: peerConnection.connectionState,
+    });
     if (
       ["failed", "closed", "disconnected"].includes(
         peerConnection.connectionState
@@ -148,6 +170,13 @@ const createPeerConnection = (remoteUserId) => {
     }
   };
 
+  peerConnection.oniceconnectionstatechange = () => {
+    logGroupCallDebug("ice_connection_state_changed", {
+      remoteUserId,
+      iceConnectionState: peerConnection.iceConnectionState,
+    });
+  };
+
   groupCallContext.peerConnections.set(remoteUserId, peerConnection);
   return peerConnection;
 };
@@ -156,14 +185,23 @@ const createOfferForParticipant = async (remoteUserId) => {
   const peerConnection = createPeerConnection(remoteUserId);
   if (!peerConnection) return;
 
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
+  try {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
 
-  wss.sendGroupCallOffer({
-    sessionId: groupCallContext.sessionId,
-    targetUserId: remoteUserId,
-    offer: serializeSessionDescription(offer),
-  });
+    wss.sendGroupCallOffer({
+      sessionId: groupCallContext.sessionId,
+      targetUserId: remoteUserId,
+      offer: serializeSessionDescription(offer),
+    });
+  } catch (error) {
+    console.error("Error creating group call offer:", error);
+    logGroupCallDebug("renegotiation_failed", {
+      remoteUserId,
+      stage: "create_offer",
+      name: error?.name,
+    });
+  }
 };
 
 const cleanupGroupCall = ({ preserveLocalStream = true } = {}) => {
@@ -194,6 +232,7 @@ export const startGroupCall = async ({
   groupCallContext.cancelRequestedBeforeStart = false;
   const ready = await getLocalStream(callType, { skipPeerConnection: true });
   if (!ready) {
+    logGroupCallDebug("permission_failure", { stage: "start_group_call", callType });
     toast.error("Unable to access microphone or camera for this group call.");
     return;
   }
@@ -300,6 +339,10 @@ export const acceptIncomingGroupCallRequest = async () => {
     skipPeerConnection: true,
   });
   if (!ready) {
+    logGroupCallDebug("permission_failure", {
+      stage: "accept_group_call",
+      callType: incoming.callType,
+    });
     toast.error("Unable to access microphone or camera for this group call.");
     wss.sendGroupCallReject({ sessionId: incoming.sessionId });
     store.dispatch(setGroupCallIncoming(null));
@@ -407,17 +450,26 @@ export const handleGroupCallOffer = async ({ sessionId, senderUserId, offer }) =
   const peerConnection = createPeerConnection(String(senderUserId));
   if (!peerConnection) return;
 
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
 
-  wss.sendGroupCallAnswer({
-    sessionId,
-    targetUserId: senderUserId,
-    answer: serializeSessionDescription(answer),
-  });
+    wss.sendGroupCallAnswer({
+      sessionId,
+      targetUserId: senderUserId,
+      answer: serializeSessionDescription(answer),
+    });
 
-  await flushPendingCandidates(String(senderUserId));
+    await flushPendingCandidates(String(senderUserId));
+  } catch (error) {
+    console.error("Error handling group call offer:", error);
+    logGroupCallDebug("renegotiation_failed", {
+      remoteUserId: senderUserId,
+      stage: "handle_offer",
+      name: error?.name,
+    });
+  }
 };
 
 export const handleGroupCallAnswer = async ({ sessionId, senderUserId, answer }) => {
@@ -426,8 +478,17 @@ export const handleGroupCallAnswer = async ({ sessionId, senderUserId, answer })
   const peerConnection = groupCallContext.peerConnections.get(String(senderUserId));
   if (!peerConnection) return;
 
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  await flushPendingCandidates(String(senderUserId));
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    await flushPendingCandidates(String(senderUserId));
+  } catch (error) {
+    console.error("Error handling group call answer:", error);
+    logGroupCallDebug("renegotiation_failed", {
+      remoteUserId: senderUserId,
+      stage: "handle_answer",
+      name: error?.name,
+    });
+  }
 };
 
 export const handleGroupCallCandidate = async ({

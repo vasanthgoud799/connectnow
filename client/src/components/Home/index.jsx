@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/clerk-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { connect } from "react-redux";
@@ -16,23 +16,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import Chat from "./Chat";
-import Detail from "./Detail";
 import List from "./List";
 import UserInfo from "./List/UserInfo";
-import Search from "./Search";
-import ContactsPage from "./pages/ContactsPage";
-import CallsPage from "./pages/CallsPage";
-import StarredPage from "./pages/StarredPage";
-import SettingsPage from "./pages/SettingsPage";
-import DirectCall from "./Dashboard/components/DirectCall/DirectCall";
-import GlobalSearchModal from "./GlobalSearchModal";
-import NotificationDrawer from "./NotificationDrawer";
 
 import { apiClient } from "@/lib/api-client";
 import { clearPersistedAppSession } from "@/lib/api-client";
+import { clearE2EEClientState } from "@/crypto/e2eeService";
 import { useAppStore } from "@/store";
-import { callStates, isDirectCallVisible } from "@/store/actions/callActions";
+import { isDirectCallVisible } from "@/store/actions/callActions";
 import {
   ACCEPT_FRIEND_REQUEST_ROUTE,
   ACCEPT_GROUP_INVITE_ROUTE,
@@ -44,6 +35,19 @@ import {
 } from "@/utils/constants";
 import { registerNewUser } from "@/utils/wssConnection/wssConnection";
 import { useSocket } from "@/context/SocketContext";
+import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import RouteLoader from "@/components/ui/RouteLoader";
+
+const Chat = lazy(() => import("./Chat"));
+const Detail = lazy(() => import("./Detail"));
+const Search = lazy(() => import("./Search"));
+const ContactsPage = lazy(() => import("./pages/ContactsPage"));
+const CallsPage = lazy(() => import("./pages/CallsPage"));
+const StarredPage = lazy(() => import("./pages/StarredPage"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage"));
+const DirectCall = lazy(() => import("./Dashboard/components/DirectCall/DirectCall"));
+const GlobalSearchModal = lazy(() => import("./GlobalSearchModal"));
+const NotificationDrawer = lazy(() => import("./NotificationDrawer"));
 
 function Home({ activeUsers = [], callState }) {
   const { signOut } = useClerk();
@@ -63,6 +67,7 @@ function Home({ activeUsers = [], callState }) {
   } = useAppStore();
   const navigate = useNavigate();
   const socket = useSocket();
+  const { isMobile } = useResponsiveLayout();
 
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -71,7 +76,6 @@ function Home({ activeUsers = [], callState }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const [mobileChatView, setMobileChatView] = useState(() =>
     window.innerWidth <= 768 ? "list" : "chat"
   );
@@ -79,17 +83,10 @@ function Home({ activeUsers = [], callState }) {
   const previousSectionRef = useRef(activeSection);
 
   useEffect(() => {
-    const handleResize = () => {
-      const nextIsMobile = window.innerWidth <= 768;
-      setIsMobile(nextIsMobile);
-      if (!nextIsMobile) {
-        setMobileChatView("chat");
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    if (!isMobile) {
+      setMobileChatView("chat");
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -273,6 +270,7 @@ function Home({ activeUsers = [], callState }) {
     setNotifications([]);
     setNotificationUnreadCount(0);
     clearPersistedAppSession();
+    await clearE2EEClientState();
     setUserInfo(undefined);
     navigate("/auth", { replace: true });
 
@@ -594,7 +592,9 @@ function Home({ activeUsers = [], callState }) {
           </div>
         </div>
       )}
-      <DirectCall />
+      <Suspense fallback={null}>
+        <DirectCall />
+      </Suspense>
 
       {!isDirectCallVisible(callState) && (
         <div className="relative flex h-[100dvh] w-full max-w-full overflow-hidden">
@@ -667,6 +667,7 @@ function Home({ activeUsers = [], callState }) {
                       <div className="mt-4 space-y-2">
                         <button
                           type="button"
+                          data-testid="home-logout-button"
                           className="themed-panel-soft flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition hover:opacity-90"
                           onClick={() => {
                             setIsProfileMenuOpen(false);
@@ -694,6 +695,7 @@ function Home({ activeUsers = [], callState }) {
                 )}
                 <button
                   type="button"
+                  data-testid="home-profile-menu-button"
                   onClick={() => setIsProfileMenuOpen((prev) => !prev)}
                   className="themed-glow-avatar flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#6366f1] font-semibold uppercase text-white transition hover:scale-[1.03]"
                 >
@@ -739,12 +741,14 @@ function Home({ activeUsers = [], callState }) {
                           className="relative flex min-h-0 w-full max-w-full flex-1 overflow-hidden"
                         >
                           <div className="themed-main-panel themed-chat-canvas relative flex-1 overflow-hidden">
-                            <Chat
-                              isMobile
-                              onBack={returnToMobileChatList}
-                              onToggleDetail={toggleDetail}
-                              onToggleSearch={toggleSearch}
-                            />
+                            <Suspense fallback={<RouteLoader message="Loading chat..." />}>
+                              <Chat
+                                isMobile
+                                onBack={returnToMobileChatList}
+                                onToggleDetail={toggleDetail}
+                                onToggleSearch={toggleSearch}
+                              />
+                            </Suspense>
                           </div>
 
                           <AnimatePresence>
@@ -756,8 +760,16 @@ function Home({ activeUsers = [], callState }) {
                                 transition={{ duration: 0.2 }}
                                 className="themed-main-panel absolute inset-0 z-30 overflow-hidden"
                               >
-                                {isDetailVisible && <Detail onClose={toggleDetail} />}
-                                {isSearchVisible && <Search onClose={toggleSearch} />}
+                                {isDetailVisible && (
+                                  <Suspense fallback={<RouteLoader message="Loading chat details..." />}>
+                                    <Detail onClose={toggleDetail} />
+                                  </Suspense>
+                                )}
+                                {isSearchVisible && (
+                                  <Suspense fallback={<RouteLoader message="Loading search..." />}>
+                                    <Search onClose={toggleSearch} />
+                                  </Suspense>
+                                )}
                               </motion.div>
                             )}
                           </AnimatePresence>
@@ -782,7 +794,9 @@ function Home({ activeUsers = [], callState }) {
                         className="flex min-w-0 flex-1"
                       >
                         <div className="themed-main-panel themed-chat-canvas relative flex-1">
-                          <Chat onToggleDetail={toggleDetail} onToggleSearch={toggleSearch} />
+                          <Suspense fallback={<RouteLoader message="Loading chat..." />}>
+                            <Chat onToggleDetail={toggleDetail} onToggleSearch={toggleSearch} />
+                          </Suspense>
                         </div>
                       </motion.div>
 
@@ -792,11 +806,19 @@ function Home({ activeUsers = [], callState }) {
                             initial={{ x: 60, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: 60, opacity: 0 }}
-                            transition={{ duration: 0.28 }}
-                            className="themed-main-panel hidden w-[24rem] border-l xl:block"
-                          >
-                            {isDetailVisible && <Detail onClose={toggleDetail} />}
-                            {isSearchVisible && <Search onClose={toggleSearch} />}
+                          transition={{ duration: 0.28 }}
+                          className="themed-main-panel hidden w-[24rem] border-l xl:block"
+                        >
+                            {isDetailVisible && (
+                              <Suspense fallback={<RouteLoader message="Loading chat details..." />}>
+                                <Detail onClose={toggleDetail} />
+                              </Suspense>
+                            )}
+                            {isSearchVisible && (
+                              <Suspense fallback={<RouteLoader message="Loading search..." />}>
+                                <Search onClose={toggleSearch} />
+                              </Suspense>
+                            )}
                           </motion.div>
                         )}
                       </AnimatePresence>
@@ -810,21 +832,33 @@ function Home({ activeUsers = [], callState }) {
                     className="themed-main-panel flex min-w-0 w-full max-w-full flex-1 overflow-hidden"
                   >
                     {activeSection === "contacts" && (
-                      <ContactsPage
-                        onOpenChat={() => {
-                          if (isMobile) {
-                            setForceOpenMobileChat(true);
-                            setMobileChatView("chat");
-                          }
-                          setActiveSection("chats");
-                        }}
-                      />
+                      <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
+                        <ContactsPage
+                          onOpenChat={() => {
+                            if (isMobile) {
+                              setForceOpenMobileChat(true);
+                              setMobileChatView("chat");
+                            }
+                            setActiveSection("chats");
+                          }}
+                        />
+                      </Suspense>
                     )}
-                    {activeSection === "calls" && <CallsPage />}
+                    {activeSection === "calls" && (
+                      <Suspense fallback={<RouteLoader message="Loading calls..." />}>
+                        <CallsPage />
+                      </Suspense>
+                    )}
                     {activeSection === "starred" && (
-                      <StarredPage onOpenChat={() => setActiveSection("chats")} />
+                      <Suspense fallback={<RouteLoader message="Loading starred messages..." />}>
+                        <StarredPage onOpenChat={() => setActiveSection("chats")} />
+                      </Suspense>
                     )}
-                    {activeSection === "settings" && <SettingsPage />}
+                    {activeSection === "settings" && (
+                      <Suspense fallback={<RouteLoader message="Loading settings..." />}>
+                        <SettingsPage />
+                      </Suspense>
+                    )}
                   </motion.div>
                 )}
               </div>
@@ -859,52 +893,60 @@ function Home({ activeUsers = [], callState }) {
         </div>
       )}
 
-      <GlobalSearchModal
-        isOpen={isGlobalSearchOpen}
-        onClose={() => setIsGlobalSearchOpen(false)}
-        onOpenConversation={openConversationFromGlobalSearch}
-      />
+      {isGlobalSearchOpen && (
+        <Suspense fallback={<RouteLoader message="Loading search..." />}>
+          <GlobalSearchModal
+            isOpen={isGlobalSearchOpen}
+            onClose={() => setIsGlobalSearchOpen(false)}
+            onOpenConversation={openConversationFromGlobalSearch}
+          />
+        </Suspense>
+      )}
 
-      <NotificationDrawer
-        isOpen={isNotificationsOpen}
-        notifications={notifications}
-        unreadCount={notificationUnreadCount}
-        onClose={() => setIsNotificationsOpen(false)}
-        onAcceptRequest={handleAcceptFriendRequest}
-        onRejectRequest={handleRejectFriendRequest}
-        onAcceptGroupInvite={handleAcceptGroupInvite}
-        onRejectGroupInvite={handleRejectGroupInvite}
-        onReadAllNotifications={async () => {
-          try {
-            const response = await apiClient.post(
-              `${NOTIFICATIONS_ROUTE}/read-all`,
-              {},
-              { withCredentials: true }
-            );
-            setNotifications(response.data.notifications || []);
-            setNotificationUnreadCount(response.data.unreadCount || 0);
-            toast.success("All notifications marked as read");
-          } catch (error) {
-            console.error("Error marking all notifications read:", error);
-            toast.error(
-              error.response?.data?.message || "Unable to mark all notifications as read."
-            );
-          }
-        }}
-        onReadNotification={async (notification) => {
-          try {
-            const response = await apiClient.post(
-              `${NOTIFICATIONS_ROUTE}/${notification._id}/read`,
-              {},
-              { withCredentials: true }
-            );
-            markNotificationRead(notification._id, response.data.unreadCount);
-          } catch (error) {
-            console.error("Error marking notification read:", error);
-          }
-        }}
-        onOpenNotification={openNotification}
-      />
+      {isNotificationsOpen && (
+        <Suspense fallback={<RouteLoader message="Loading notifications..." />}>
+          <NotificationDrawer
+            isOpen={isNotificationsOpen}
+            notifications={notifications}
+            unreadCount={notificationUnreadCount}
+            onClose={() => setIsNotificationsOpen(false)}
+            onAcceptRequest={handleAcceptFriendRequest}
+            onRejectRequest={handleRejectFriendRequest}
+            onAcceptGroupInvite={handleAcceptGroupInvite}
+            onRejectGroupInvite={handleRejectGroupInvite}
+            onReadAllNotifications={async () => {
+              try {
+                const response = await apiClient.post(
+                  `${NOTIFICATIONS_ROUTE}/read-all`,
+                  {},
+                  { withCredentials: true }
+                );
+                setNotifications(response.data.notifications || []);
+                setNotificationUnreadCount(response.data.unreadCount || 0);
+                toast.success("All notifications marked as read");
+              } catch (error) {
+                console.error("Error marking all notifications read:", error);
+                toast.error(
+                  error.response?.data?.message || "Unable to mark all notifications as read."
+                );
+              }
+            }}
+            onReadNotification={async (notification) => {
+              try {
+                const response = await apiClient.post(
+                  `${NOTIFICATIONS_ROUTE}/${notification._id}/read`,
+                  {},
+                  { withCredentials: true }
+                );
+                markNotificationRead(notification._id, response.data.unreadCount);
+              } catch (error) {
+                console.error("Error marking notification read:", error);
+              }
+            }}
+            onOpenNotification={openNotification}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
