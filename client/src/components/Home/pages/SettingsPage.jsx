@@ -16,13 +16,10 @@ import { useAppStore } from "@/store";
 import { apiClient } from "@/lib/api-client";
 import {
   AI_SETTINGS_ROUTE,
-  SECURITY_ADMIN_DASHBOARD_ROUTE,
   SECURITY_BACKUP_CODES_ROUTE,
   SECURITY_DATA_EXPORT_ROUTE,
-  SECURITY_EVENTS_ROUTE,
   SECURITY_REVOKE_OTHERS_ROUTE,
   SECURITY_SESSIONS_ROUTE,
-  SECURITY_TRUSTED_DEVICES_ROUTE,
 } from "@/utils/constants";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -33,16 +30,20 @@ const PremiumUpgradeModal = lazy(() => import("../PremiumUpgradeModal"));
 
 function SettingsPage() {
   const navigate = useNavigate();
-  const { userInfo, setUserInfo } = useAppStore();
+  const {
+    userInfo,
+    setUserInfo,
+    sessions,
+    trustedDevices,
+    securityEvents,
+    adminDashboard,
+    fetchSecuritySnapshot,
+  } = useAppStore();
   const [aiEnabled, setAiEnabled] = useState(Boolean(userInfo?.aiPreferences?.enabled));
   const [translationLanguage, setTranslationLanguage] = useState(
     userInfo?.aiPreferences?.translationLanguage || "English"
   );
   const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [sessions, setSessions] = useState([]);
-  const [trustedDevices, setTrustedDevices] = useState([]);
-  const [securityEvents, setSecurityEvents] = useState([]);
-  const [adminDashboard, setAdminDashboard] = useState(null);
 
   const subscription = userInfo?.subscription || { plan: "free", expiresAt: null };
   const isPremiumUser =
@@ -63,33 +64,8 @@ function SettingsPage() {
   }, [userInfo?.aiPreferences]);
 
   useEffect(() => {
-    const loadSecuritySnapshot = async () => {
-      try {
-        const [sessionResponse, eventsResponse] = await Promise.all([
-          apiClient.get(SECURITY_SESSIONS_ROUTE, { withCredentials: true }),
-          apiClient.get(`${SECURITY_EVENTS_ROUTE}?limit=5`, { withCredentials: true }),
-        ]);
-        setSessions(sessionResponse.data?.sessions || []);
-        setSecurityEvents(eventsResponse.data?.events || []);
-        const trustedDevicesResponse = await apiClient.get(SECURITY_TRUSTED_DEVICES_ROUTE, {
-          withCredentials: true,
-        });
-        setTrustedDevices(trustedDevicesResponse.data?.devices || []);
-
-        if (userInfo?.role === "admin") {
-          const dashboardResponse = await apiClient.get(
-            `${SECURITY_ADMIN_DASHBOARD_ROUTE}?hours=24`,
-            { withCredentials: true }
-          );
-          setAdminDashboard(dashboardResponse.data || null);
-        }
-      } catch (error) {
-        console.error("Error loading security snapshot:", error);
-      }
-    };
-
-    loadSecuritySnapshot();
-  }, [userInfo?.role]);
+    fetchSecuritySnapshot({ isAdmin: userInfo?.role === "admin" });
+  }, [fetchSecuritySnapshot, userInfo?.role]);
 
   const saveAISettings = async (nextEnabled = aiEnabled, nextLanguage = translationLanguage) => {
     if (!isPremiumUser) {

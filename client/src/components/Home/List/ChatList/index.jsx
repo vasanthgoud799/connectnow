@@ -21,25 +21,18 @@ import { apiClient } from "@/lib/api-client.js";
 import {
   CHAT_PREFERENCES_ROUTE,
   DELETE_CHAT_ROUTE,
-  GET_CHATS_ROUTE,
 } from "@/utils/constants.js";
 import { useSocket } from "@/context/SocketContext";
-import {
-  decryptChatSummaries,
-  hydrateChatSummariesFromCache,
-} from "@/crypto/e2eeService";
 
 const AddUser = lazy(() => import("./AddUser"));
 const CreateGroup = lazy(() => import("./CreateGroup"));
 
 const CHAT_TABS = ["All", "Unread", "Groups", "Favorites"];
-let latestChatLoadRequestId = 0;
 
 function ChatList() {
   const [searchText, setSearchText] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("All");
   const [activeMenuConversationKey, setActiveMenuConversationKey] = useState(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -47,56 +40,23 @@ function ChatList() {
 
   const {
     chatSummaries,
-    setChatSummaries,
+    chatSummariesLoaded,
+    chatSummariesLoading,
     setSelectedChatData,
     setSelectedConversationKey,
     setUnreadCount,
     selectedConversationKey,
     updateChatPreference,
     userInfo,
+    fetchChatSummaries,
+    invalidateContacts,
   } = useAppStore();
-
-  const loadChats = async () => {
-    const requestId = ++latestChatLoadRequestId;
-    try {
-      setIsLoading(true);
-      const response = await apiClient.get(GET_CHATS_ROUTE, {
-        withCredentials: true,
-      });
-      const rawChats = Array.isArray(response.data.chats) ? response.data.chats : [];
-      const cachedChats = await hydrateChatSummariesFromCache({
-        chats: rawChats,
-      });
-      setChatSummaries(cachedChats);
-      setIsLoading(false);
-
-      decryptChatSummaries({
-        chats: rawChats,
-        currentUserId: userInfo?.id,
-      })
-        .then((decryptedChats) => {
-          if (requestId !== latestChatLoadRequestId) return;
-          setChatSummaries(decryptedChats);
-        })
-        .catch((error) => {
-          console.error("Error decrypting chat summaries:", error);
-        });
-    } catch (error) {
-      console.error("Error fetching chats:", error);
-      setChatSummaries([]);
-      setIsLoading(false);
-    } finally {
-      if (requestId === latestChatLoadRequestId) {
-        setIsLoading(false);
-      }
-    }
-  };
 
   useEffect(() => {
     if (userInfo?.id) {
-      loadChats();
+      fetchChatSummaries({ currentUserId: userInfo.id });
     }
-  }, [userInfo?.id]);
+  }, [fetchChatSummaries, userInfo?.id]);
 
   const filteredChats = useMemo(() => {
     const tabFiltered = chatSummaries.filter((chat) => {
@@ -243,7 +203,7 @@ function ChatList() {
         </div>
 
         <div className="pr-1 md:min-h-0 md:flex-1">
-          {isLoading ? (
+          {!chatSummariesLoaded && chatSummariesLoading ? (
             <div className="themed-panel-soft themed-subtitle rounded-[24px] px-4 py-8 text-center">
               Loading conversations...
             </div>
@@ -418,7 +378,8 @@ function ChatList() {
           <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
             <AddUser
               onFriendAdded={() => {
-                loadChats();
+                invalidateContacts();
+                fetchChatSummaries({ force: true, currentUserId: userInfo?.id });
                 setShowAddUser(false);
               }}
               onClose={() => setShowAddUser(false)}
@@ -433,7 +394,7 @@ function ChatList() {
             <CreateGroup
               onClose={() => setShowCreateGroup(false)}
               onCreated={() => {
-                loadChats();
+                fetchChatSummaries({ force: true, currentUserId: userInfo?.id });
                 setShowCreateGroup(false);
               }}
             />

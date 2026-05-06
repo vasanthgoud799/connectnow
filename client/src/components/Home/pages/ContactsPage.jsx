@@ -1,43 +1,30 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Gift, Search, UserPlus } from "lucide-react";
 
-import { apiClient } from "@/lib/api-client";
-import { LIST_CONTACTS_ROUTE, UPCOMING_BIRTHDAYS_ROUTE } from "@/utils/constants";
 import RouteLoader from "@/components/ui/RouteLoader";
 import { useAppStore } from "@/store";
 
 const AddUser = lazy(() => import("../List/ChatList/AddUser"));
 
 function ContactsPage({ onOpenChat }) {
-  const [contacts, setContacts] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [birthdayReminders, setBirthdayReminders] = useState([]);
-  const { setSelectedChatData } = useAppStore();
-
-  const loadContacts = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get(LIST_CONTACTS_ROUTE, {
-        withCredentials: true,
-      });
-      setContacts(response.data.contacts || []);
-    } catch (error) {
-      console.error("Error loading contacts:", error);
-      setContacts([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    contacts,
+    contactsLoaded,
+    contactsLoading,
+    birthdayReminders,
+    fetchContacts,
+    fetchBirthdayReminders,
+    invalidateContacts,
+    invalidateBirthdays,
+    setSelectedChatData,
+  } = useAppStore();
 
   useEffect(() => {
-    loadContacts();
-    apiClient
-      .get(UPCOMING_BIRTHDAYS_ROUTE, { withCredentials: true })
-      .then((response) => setBirthdayReminders(response.data.birthdays || []))
-      .catch((error) => console.error("Error loading birthdays:", error));
-  }, []);
+    fetchContacts();
+    fetchBirthdayReminders();
+  }, [fetchBirthdayReminders, fetchContacts]);
 
   const birthdayReminderMap = useMemo(
     () =>
@@ -80,7 +67,7 @@ function ContactsPage({ onOpenChat }) {
       </div>
 
       <div className="grid auto-rows-min gap-4 pb-2 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {loading ? (
+        {!contactsLoaded && contactsLoading ? (
           <>
             <div className="md:col-span-2 xl:col-span-3 2xl:col-span-4">
               <div className="themed-panel-soft rounded-[24px] px-5 py-4 text-center">
@@ -168,12 +155,15 @@ function ContactsPage({ onOpenChat }) {
 
       {showAddUser && (
         <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
-          <AddUser
-            onFriendAdded={() => {
-              loadContacts();
-              setShowAddUser(false);
-            }}
-            onClose={() => setShowAddUser(false)}
+            <AddUser
+              onFriendAdded={() => {
+                invalidateContacts();
+                invalidateBirthdays();
+                fetchContacts({ force: true });
+                fetchBirthdayReminders({ force: true });
+                setShowAddUser(false);
+              }}
+              onClose={() => setShowAddUser(false)}
           />
         </Suspense>
       )}

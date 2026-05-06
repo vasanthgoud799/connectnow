@@ -1,4 +1,4 @@
-const CACHE_NAME = "connectnow-shell-v1";
+const CACHE_NAME = "connectnow-shell-v2";
 const APP_SHELL = ["/", "/auth", "/manifest.webmanifest", "/pwa-icon.svg", "/pwa-maskable.svg", "/favicon.png", "/avatar.png"];
 
 self.addEventListener("install", (event) => {
@@ -29,14 +29,10 @@ self.addEventListener("fetch", (event) => {
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/auth", cloned)).catch(() => {});
-          return response;
-        })
+        .then((response) => response)
         .catch(async () => {
-          const cached = await caches.match("/auth");
-          return cached || caches.match("/");
+          const cachedShell = await caches.match("/");
+          return cachedShell || Response.error();
         })
     );
     return;

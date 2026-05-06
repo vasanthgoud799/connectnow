@@ -1,12 +1,16 @@
 import { useAppStore } from "@/store";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import { IoArrowBack } from "react-icons/io5";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { UPDATE_PROFILE_ROUTE, UPLOAD_FILE_ROUTE } from "@/utils/constants";
-import { apiClient } from "@/lib/api-client";
+import {
+  CLERK_SYNC_ROUTE,
+  UPDATE_PROFILE_ROUTE,
+  UPLOAD_FILE_ROUTE,
+} from "@/utils/constants";
+import { apiClient, persistAppSession } from "@/lib/api-client";
 import { toast } from "sonner";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Camera, Copy, ShieldCheck, UserRound } from "lucide-react";
@@ -69,6 +73,7 @@ async function compressProfileImageIfNeeded(file) {
 
 function Profile() {
   const { userInfo, setUserInfo } = useAppStore();
+  const { getToken } = useAuth();
   const { user: clerkUser } = useUser();
   const navigate = useNavigate();
   const [firstName, setFirstName] = useState(userInfo?.firstName || "");
@@ -178,27 +183,100 @@ function Profile() {
     return response.data;
   };
 
+  const syncAppSessionForProfile = async () => {
+    const clerkToken = await getToken();
+    if (!clerkToken) {
+      throw new Error("Your sign-in session expired. Please sign in again.");
+    }
+
+    const syncResponse = await apiClient.post(
+      CLERK_SYNC_ROUTE,
+      {
+        website: "",
+        company: "",
+      },
+      {
+        withCredentials: true,
+        headers: {
+          Authorization: `Bearer ${clerkToken}`,
+          "X-Device-Label":
+            [navigator.platform, navigator.userAgentData?.platform].filter(Boolean)[0] ||
+            navigator.userAgent ||
+            "Browser device",
+          "X-Client-Render-Time": "0",
+        },
+      }
+    );
+
+    const sessionToken = syncResponse.data?.session?.token || "";
+    if (!sessionToken) {
+      throw new Error("Could not refresh your app session. Please sign in again.");
+    }
+
+    persistAppSession({
+      token: sessionToken,
+      csrfToken: syncResponse.data?.session?.csrfToken || "",
+    });
+
+    if (syncResponse.data?.user) {
+      setUserInfo(syncResponse.data.user);
+    }
+  };
+
   const saveChanges = async () => {
     if (validateProfile()) {
       try {
-        const imageUpload = imageFile ? await uploadProfileImage(imageFile) : null;
+        let imageUpload = null;
+        if (imageFile) {
+          try {
+            imageUpload = await uploadProfileImage(imageFile);
+          } catch (error) {
+            if (error?.response?.status === 401) {
+              await syncAppSessionForProfile();
+              imageUpload = await uploadProfileImage(imageFile);
+            } else {
+              throw error;
+            }
+          }
+        }
         const persistedImage = imageFile
           ? ""
           : String(image || "").startsWith("data:")
             ? ""
             : image;
-        const response = await apiClient.post(
-          UPDATE_PROFILE_ROUTE,
-          {
-            firstName: resolvedFirstName,
-            lastName: resolvedLastName,
-            image: persistedImage,
-            imageUpload,
-            about: normalizedAbout,
-            birthday,
-          },
-          { withCredentials: true }
-        );
+        let response;
+        try {
+          response = await apiClient.post(
+            UPDATE_PROFILE_ROUTE,
+            {
+              firstName: resolvedFirstName,
+              lastName: resolvedLastName,
+              image: persistedImage,
+              imageUpload,
+              about: normalizedAbout,
+              birthday,
+            },
+            { withCredentials: true }
+          );
+        } catch (error) {
+          if (error?.response?.status === 401) {
+            await syncAppSessionForProfile();
+            response = await apiClient.post(
+              UPDATE_PROFILE_ROUTE,
+              {
+                firstName: resolvedFirstName,
+                lastName: resolvedLastName,
+                image: persistedImage,
+                imageUpload,
+                about: normalizedAbout,
+                birthday,
+              },
+              { withCredentials: true }
+            );
+          } else {
+            throw error;
+          }
+        }
 
         if (response.status === 200 && response.data) {
           setUserInfo({ ...response.data });

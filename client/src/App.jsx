@@ -6,6 +6,7 @@ import {
   apiClient,
   clearPersistedAppSession,
   persistAppSession,
+  registerAppSessionRefreshHandler,
 } from "./lib/api-client";
 import { CLERK_SYNC_ROUTE } from "./utils/constants";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
@@ -48,6 +49,7 @@ function App() {
   const authReady = isLoaded && !loading;
   const hasSyncedRef = useRef(false);
   const syncInFlightRef = useRef(false);
+  const syncPromiseRef = useRef(null);
   const retryTimeoutRef = useRef(null);
   const retryCountRef = useRef(0);
 
@@ -65,102 +67,119 @@ function App() {
       }
     };
 
-    const syncClerkUser = async ({ isRetry = false } = {}) => {
-      if (syncInFlightRef.current) {
-        console.info("Skipping duplicate Clerk sync request because one is already in flight.");
-        return;
+    const syncClerkUser = ({ isRetry = false, skipLoadingState = false } = {}) => {
+      if (syncPromiseRef.current) {
+        return syncPromiseRef.current;
       }
 
-      try {
-        syncInFlightRef.current = true;
-        const token = await getToken();
-        if (!token) {
-          hasSyncedRef.current = false;
-          clearPersistedAppSession();
-          setUserInfo(undefined);
-          setLoading(false);
-          return;
-        }
-
-        const syncResponse = await apiClient.post(
-          CLERK_SYNC_ROUTE,
-          {
-            website: "",
-            company: "",
-          },
-          {
-            withCredentials: true,
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "X-Device-Label":
-                [navigator.platform, navigator.userAgentData?.platform].filter(Boolean)[0] ||
-                navigator.userAgent ||
-                "Browser device",
-              "X-Client-Render-Time": String(
-                Math.max(
-                  Date.now() -
-                    Number(sessionStorage.getItem("connectnow-auth-page-opened-at") || Date.now()),
-                  0
-                )
-              ),
-            },
+      syncPromiseRef.current = (async () => {
+        try {
+          syncInFlightRef.current = true;
+          const token = await getToken();
+          if (!token) {
+            hasSyncedRef.current = false;
+            clearPersistedAppSession();
+            setUserInfo(undefined);
+            return;
           }
-        );
 
-        const returnedSessionToken = syncResponse.data?.session?.token || "";
+          const syncResponse = await apiClient.post(
+            CLERK_SYNC_ROUTE,
+            {
+              website: "",
+              company: "",
+            },
+            {
+              withCredentials: true,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "X-Device-Label":
+                  [navigator.platform, navigator.userAgentData?.platform].filter(Boolean)[0] ||
+                  navigator.userAgent ||
+                  "Browser device",
+                "X-Client-Render-Time": String(
+                  Math.max(
+                    Date.now() -
+                      Number(sessionStorage.getItem("connectnow-auth-page-opened-at") || Date.now()),
+                    0
+                  )
+                ),
+              },
+            }
+          );
 
-        if (
-          syncResponse.status === 200 &&
-          syncResponse.data?.user?.id &&
-          returnedSessionToken
-        ) {
-          persistAppSession({
-            token: returnedSessionToken,
-            csrfToken: syncResponse.data?.session?.csrfToken || "",
-          });
-          clearRetryTimeout();
-          retryCountRef.current = 0;
-          hasSyncedRef.current = true;
-          setUserInfo(syncResponse.data.user);
-        } else {
+          const returnedSessionToken = syncResponse.data?.session?.token || "";
+
+          if (
+            syncResponse.status === 200 &&
+            syncResponse.data?.user?.id &&
+            returnedSessionToken
+          ) {
+            persistAppSession({
+              token: returnedSessionToken,
+              csrfToken: syncResponse.data?.session?.csrfToken || "",
+            });
+            clearRetryTimeout();
+            retryCountRef.current = 0;
+            hasSyncedRef.current = true;
+            setUserInfo(syncResponse.data.user);
+            return syncResponse.data.user;
+          }
+
           console.error(
             "Clerk sync completed without an app session token. This usually means the backend deployment is outdated or session persistence is misconfigured."
           );
           hasSyncedRef.current = false;
           clearPersistedAppSession();
           setUserInfo(undefined);
-        }
-      } catch (error) {
-        console.error("Error syncing Clerk user:", error);
-        const status = Number(error?.response?.status || 0);
-        const retryAfterHeader = Number(error?.response?.headers?.["retry-after"] || 0);
-        const retryAfterBody = Number(error?.response?.data?.retryAfterSeconds || 0);
-        const retryAfterSeconds = retryAfterHeader || retryAfterBody;
-        const shouldRetry =
-          status === 429 && retryCountRef.current < 1 && retryAfterSeconds > 0;
+          throw new Error("Missing app session token after Clerk sync.");
+        } catch (error) {
+          console.error("Error syncing Clerk user:", error);
+          const status = Number(error?.response?.status || 0);
+          const retryAfterHeader = Number(error?.response?.headers?.["retry-after"] || 0);
+          const retryAfterBody = Number(error?.response?.data?.retryAfterSeconds || 0);
+          const retryAfterSeconds = retryAfterHeader || retryAfterBody;
+          const shouldRetry =
+            status === 429 && retryCountRef.current < 1 && retryAfterSeconds > 0 && !skipLoadingState;
 
-        if (shouldRetry) {
-          retryCountRef.current += 1;
-          hasSyncedRef.current = false;
-          clearRetryTimeout();
-          console.warn(
-            `Clerk sync rate-limited. Retrying once in ${retryAfterSeconds} seconds.`
-          );
-          retryTimeoutRef.current = setTimeout(() => {
-            syncClerkUser({ isRetry: true });
-          }, retryAfterSeconds * 1000);
-        } else {
-          if (isRetry) {
-            console.error("Clerk sync retry failed. No further retries will be attempted.");
+          if (shouldRetry) {
+            retryCountRef.current += 1;
+            hasSyncedRef.current = false;
+            clearRetryTimeout();
+            console.warn(
+              `Clerk sync rate-limited. Retrying once in ${retryAfterSeconds} seconds.`
+            );
+            retryTimeoutRef.current = setTimeout(() => {
+              syncClerkUser({ isRetry: true });
+            }, retryAfterSeconds * 1000);
+          } else {
+            if (isRetry) {
+              console.error("Clerk sync retry failed. No further retries will be attempted.");
+            }
+            clearPersistedAppSession();
+            setUserInfo(undefined);
           }
-          clearPersistedAppSession();
-          setUserInfo(undefined);
+
+          throw error;
+        } finally {
+          syncInFlightRef.current = false;
+          syncPromiseRef.current = null;
+          if (!skipLoadingState) {
+            setLoading(false);
+          }
         }
-      } finally {
-        syncInFlightRef.current = false;
-        setLoading(false);
-      }
+      })();
+
+      return syncPromiseRef.current;
     };
+
+    registerAppSessionRefreshHandler(async () => {
+      if (!isLoaded || !isSignedIn || !user?.id) {
+        throw new Error("No active Clerk session available for app-session refresh.");
+      }
+
+      await syncClerkUser({ skipLoadingState: true });
+    });
 
     if (!isLoaded) return;
 
@@ -185,10 +204,11 @@ function App() {
       return;
     }
 
-    syncClerkUser();
+      syncClerkUser();
 
     return () => {
       clearRetryTimeout();
+      registerAppSessionRefreshHandler(null);
     };
   }, [getToken, isLoaded, isSignedIn, setUserInfo, user?.id]);
 

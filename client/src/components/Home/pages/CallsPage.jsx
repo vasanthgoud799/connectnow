@@ -14,9 +14,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "@/lib/api-client";
 import {
-  CALLS_HISTORY_ROUTE,
   CALLS_LOG_ROUTE,
-  LIST_CONTACTS_ROUTE,
 } from "@/utils/constants";
 import { useAppStore } from "@/store";
 import { isDirectCallBusy } from "@/store/actions/callActions";
@@ -195,13 +193,19 @@ function CallContactPicker({
 }
 
 function CallsPage({ activeUsers = [], callState }) {
-  const [calls, setCalls] = useState([]);
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingContacts, setLoadingContacts] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [showCallPicker, setShowCallPicker] = useState(false);
-  const { userInfo } = useAppStore();
+  const {
+    userInfo,
+    calls,
+    callsLoaded,
+    callsLoading,
+    contacts,
+    contactsLoading,
+    fetchCalls,
+    fetchContacts,
+    invalidateCalls,
+  } = useAppStore();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
 
   useEffect(() => {
@@ -211,42 +215,12 @@ function CallsPage({ activeUsers = [], callState }) {
   }, []);
 
   useEffect(() => {
-    const loadCalls = async () => {
-      try {
-        setLoading(true);
-        const response = await apiClient.get(CALLS_HISTORY_ROUTE, {
-          withCredentials: true,
-        });
-        setCalls(response.data.calls || []);
-      } catch (error) {
-        console.error("Error loading calls:", error);
-        setCalls([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadCalls();
-  }, []);
-
-  const loadContacts = async () => {
-    try {
-      setLoadingContacts(true);
-      const response = await apiClient.get(LIST_CONTACTS_ROUTE, {
-        withCredentials: true,
-      });
-      setContacts(response.data.contacts || []);
-    } catch (error) {
-      console.error("Error loading contacts:", error);
-      setContacts([]);
-    } finally {
-      setLoadingContacts(false);
-    }
-  };
+    fetchCalls();
+  }, [fetchCalls]);
 
   const openCallPicker = async () => {
     if (!contacts.length) {
-      await loadContacts();
+      await fetchContacts();
     }
     setShowCallPicker(true);
   };
@@ -295,6 +269,8 @@ function CallsPage({ activeUsers = [], callState }) {
         { recipientId: contact._id, type, status: "initiated" },
         { withCredentials: true }
       );
+      invalidateCalls();
+      fetchCalls({ force: true });
     } catch (error) {
       console.error("Error logging call:", error);
     }
@@ -368,7 +344,7 @@ function CallsPage({ activeUsers = [], callState }) {
       </div>
 
       <div className={`scrollbar-hide space-y-1 pb-2 pr-1 ${isMobile ? "" : "min-h-0 flex-1 overflow-y-auto"}`}>
-        {loading ? (
+        {!callsLoaded && callsLoading ? (
           <div className="themed-page-card themed-subtitle rounded-[24px] p-5">
             Loading calls...
           </div>

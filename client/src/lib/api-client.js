@@ -38,6 +38,13 @@ export const clearPersistedAppSession = () => {
   window.localStorage.removeItem(APP_CSRF_STORAGE_KEY);
 };
 
+let appSessionRefreshHandler = null;
+let appSessionRefreshPromise = null;
+
+export const registerAppSessionRefreshHandler = (handler) => {
+  appSessionRefreshHandler = typeof handler === "function" ? handler : null;
+};
+
 export const apiClient = axios.create({
   baseURL: HOST,
   withCredentials: true,
@@ -69,3 +76,45 @@ apiClient.interceptors.request.use((config) => {
 
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error?.config;
+    const status = Number(error?.response?.status || 0);
+    const requestUrl = String(originalRequest?.url || "");
+    const isClerkSyncRequest = requestUrl.includes("/api/auth/clerk/sync");
+
+    if (
+      status !== 401 ||
+      !originalRequest ||
+      originalRequest.__appSessionRetry ||
+      isClerkSyncRequest ||
+      !appSessionRefreshHandler
+    ) {
+      return Promise.reject(error);
+    }
+
+    originalRequest.__appSessionRetry = true;
+
+    try {
+      if (!appSessionRefreshPromise) {
+        appSessionRefreshPromise = Promise.resolve(appSessionRefreshHandler()).finally(() => {
+          appSessionRefreshPromise = null;
+        });
+      }
+
+      await appSessionRefreshPromise;
+
+      if (originalRequest.headers) {
+        delete originalRequest.headers.Authorization;
+        delete originalRequest.headers["X-CSRF-Token"];
+      }
+
+      return apiClient(originalRequest);
+    } catch (refreshError) {
+      clearPersistedAppSession();
+      return Promise.reject(refreshError || error);
+    }
+  }
+);

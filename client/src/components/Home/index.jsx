@@ -282,8 +282,6 @@ function Home({ activeUsers = [], callState }) {
     } catch (error) {
       console.error("Logout error:", error);
     }
-
-    window.location.replace("/auth");
   };
 
   const openConversationFromGlobalSearch = ({ payload }) => {
