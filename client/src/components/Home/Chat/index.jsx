@@ -1088,6 +1088,9 @@ function Chat({
   const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
   const [groupE2eeBlockedMembers, setGroupE2eeBlockedMembers] = useState([]);
   const [isDecryptingMessages, setIsDecryptingMessages] = useState(false);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [hasPendingNewMessages, setHasPendingNewMessages] = useState(false);
+  const [isAtMessageBottom, setIsAtMessageBottom] = useState(true);
 
   const {
     userInfo,
@@ -1100,6 +1103,11 @@ function Chat({
     selectedChatMessages,
     setSelectedChatMessages,
     chatSummaries,
+    messagesByConversationKey,
+    messagesLoadedByConversationKey,
+    messagesLoadingByConversationKey,
+    setConversationMessages,
+    setConversationMessagesLoading,
   } = useAppStore();
 
   const selectedChatId = selectedChatData?._id || selectedChatData?.id;
@@ -1110,9 +1118,22 @@ function Chat({
     .join(" ")
     .trim();
   const selectedChatBirthdayMeta = getUpcomingBirthdayMeta(selectedChatData?.birthday);
+  const resolvedConversationKey = useMemo(() => {
+    if (selectedConversationKey) return selectedConversationKey;
+    if (isGroupChat && selectedChatId) return `group:${selectedChatId}`;
+
+    return (
+      chatSummaries.find((chat) => {
+        const participantId = chat.participant?._id || chat.participant?.id;
+        return String(participantId) === String(selectedChatId);
+      })?.conversationKey || undefined
+    );
+  }, [chatSummaries, isGroupChat, selectedChatId, selectedConversationKey]);
 
   const socket = useSocket();
   const messageListRef = useRef(null);
+  const latestMessagesRequestRef = useRef(0);
+  const lastRenderedMessageIdRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -1316,66 +1337,110 @@ function Chat({
   useEffect(() => {
     if (!selectedChatId || !userInfo?.id) return;
 
-    const getMessages = async () => {
+    const requestId = ++latestMessagesRequestRef.current;
+    const cachedMessages = Array.isArray(messagesByConversationKey?.[resolvedConversationKey])
+      ? messagesByConversationKey[resolvedConversationKey]
+      : [];
+
+    if (resolvedConversationKey && cachedMessages.length) {
+      setSelectedChatMessages(cachedMessages);
+      setSelectedConversationKey(resolvedConversationKey);
+    }
+
+    if (resolvedConversationKey && messagesLoadedByConversationKey?.[resolvedConversationKey]) {
+      return;
+    }
+
+    const loadMessages = async () => {
       try {
-        setIsDecryptingMessages(true);
+        const pendingConversationKey =
+          resolvedConversationKey || (isGroupChat ? `group:${selectedChatId}` : null);
+        if (pendingConversationKey) {
+          setConversationMessagesLoading(pendingConversationKey, true);
+        }
+        if (!cachedMessages.length) {
+          setIsDecryptingMessages(true);
+        }
+
         const response = await apiClient.post(
           GET_ALL_MESSAGES_ROUTES,
           isGroupChat ? { groupId: selectedChatId } : { id: selectedChatId },
           { withCredentials: true }
         );
 
-        if (response.data.messages) {
-          const rawMessages = Array.isArray(response.data.messages)
-            ? response.data.messages
-            : [];
-          const cachedMessages = await hydrateMessagesFromCache({
-            messages: rawMessages,
-          });
-          setSelectedChatMessages(cachedMessages);
+        if (requestId !== latestMessagesRequestRef.current) return;
 
-          const decryptedMessages = await decryptIncomingMessages({
-            messages: rawMessages,
-            currentUserId: userInfo?.id,
-          });
-          setSelectedChatMessages(decryptedMessages);
-          preloadRecentEncryptedMedia({
-            messages: decryptedMessages,
-            currentUserId: userInfo?.id,
-            limit: 8,
-          })
-            .then((hydratedMessages) => {
-              setSelectedChatMessages(hydratedMessages);
-            })
-            .catch((error) => {
-              console.error("Error preloading encrypted media:", error);
-            });
-          if (response.data.conversationKey) {
-            setSelectedConversationKey(response.data.conversationKey);
-          }
+        const rawMessages = Array.isArray(response.data?.messages)
+          ? response.data.messages
+          : [];
+        const nextConversationKey =
+          response.data?.conversationKey || pendingConversationKey;
+
+        if (!nextConversationKey) return;
+
+        if (response.data?.conversationKey) {
+          setSelectedConversationKey(response.data.conversationKey);
         }
+
+        const hydratedMessages = await hydrateMessagesFromCache({
+          messages: rawMessages,
+        });
+
+        if (requestId !== latestMessagesRequestRef.current) return;
+        setConversationMessages(nextConversationKey, hydratedMessages, { loaded: false });
+
+        const decryptedMessages = await decryptIncomingMessages({
+          messages: rawMessages,
+          currentUserId: userInfo?.id,
+        });
+
+        if (requestId !== latestMessagesRequestRef.current) return;
+        setConversationMessages(nextConversationKey, decryptedMessages);
+
+        preloadRecentEncryptedMedia({
+          messages: decryptedMessages,
+          currentUserId: userInfo?.id,
+          limit: 8,
+        })
+          .then((prefetchedMessages) => {
+            if (requestId !== latestMessagesRequestRef.current) return;
+            setConversationMessages(nextConversationKey, prefetchedMessages);
+          })
+          .catch((error) => {
+            console.error("Error preloading encrypted media:", error);
+          });
       } catch (err) {
-        console.log("Error fetching messages:", err);
+        console.error("Error fetching messages:", err);
       } finally {
-        setIsDecryptingMessages(false);
+        if (resolvedConversationKey) {
+          setConversationMessagesLoading(resolvedConversationKey, false);
+        }
+        if (requestId === latestMessagesRequestRef.current) {
+          setIsDecryptingMessages(false);
+        }
       }
     };
 
-    getMessages();
+    loadMessages();
   }, [
     isGroupChat,
+    messagesByConversationKey,
+    messagesLoadedByConversationKey,
+    resolvedConversationKey,
     selectedChatId,
+    setConversationMessages,
+    setConversationMessagesLoading,
     setSelectedChatMessages,
     setSelectedConversationKey,
     userInfo?.id,
   ]);
 
   useEffect(() => {
-    if (!socket || !selectedChatId || !selectedConversationKey) return;
+    if (!socket || !selectedChatId || !resolvedConversationKey) return;
 
     socket.emit("join_conversation", {
       otherUserId: isGroupChat ? null : selectedChatId,
-      conversationKey: selectedConversationKey,
+      conversationKey: resolvedConversationKey,
     });
 
     apiClient
@@ -1383,7 +1448,7 @@ function Chat({
         MARK_MESSAGES_SEEN_ROUTE,
         {
           userId: isGroupChat ? null : selectedChatId,
-          conversationKey: selectedConversationKey,
+          conversationKey: resolvedConversationKey,
         },
         { withCredentials: true }
       )
@@ -1392,10 +1457,10 @@ function Chat({
     return () => {
       socket.emit("leave_conversation", {
         otherUserId: isGroupChat ? null : selectedChatId,
-        conversationKey: selectedConversationKey,
+        conversationKey: resolvedConversationKey,
       });
     };
-  }, [isGroupChat, socket, selectedChatId, selectedConversationKey]);
+  }, [isGroupChat, resolvedConversationKey, socket, selectedChatId]);
 
   useEffect(() => {
     apiClient
@@ -1617,12 +1682,56 @@ function Chat({
   }, [aiEnabled, attachedFile.file, isPremiumUser, isRecordingAudio, text]);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      messageListRef.current?.scrollToBottom("smooth");
-    }, 10);
+    const container = messageListRef.current?.container;
+    if (!container) return undefined;
 
-    return () => clearTimeout(timeoutId);
-  }, [selectedChatMessages]);
+    const handleScroll = () => {
+      const threshold = 48;
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+      const nextAtBottom = distanceFromBottom <= threshold;
+      setIsAtMessageBottom(nextAtBottom);
+      if (nextAtBottom) {
+        setHasPendingNewMessages(false);
+      }
+    };
+
+    handleScroll();
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, [resolvedConversationKey]);
+
+  useEffect(() => {
+    const latestMessage = selectedChatMessages[selectedChatMessages.length - 1];
+    const latestMessageId = latestMessage?._id || latestMessage?.id || null;
+    if (!latestMessageId) return;
+
+    const previousMessageId = lastRenderedMessageIdRef.current;
+    lastRenderedMessageIdRef.current = latestMessageId;
+
+    if (!previousMessageId) {
+      messageListRef.current?.scrollToBottom("auto");
+      return;
+    }
+
+    if (String(previousMessageId) === String(latestMessageId)) {
+      return;
+    }
+
+    const latestSenderId =
+      typeof latestMessage.sender === "string"
+        ? latestMessage.sender
+        : latestMessage.sender?._id || latestMessage.sender?.id;
+    const isOwnMessage = String(latestSenderId || "") === String(userInfo?.id || "");
+
+    if (isAtMessageBottom || isOwnMessage) {
+      messageListRef.current?.scrollToBottom("smooth");
+      setHasPendingNewMessages(false);
+      return;
+    }
+
+    setHasPendingNewMessages(true);
+  }, [isAtMessageBottom, selectedChatMessages, userInfo?.id]);
 
   useEffect(() => {
     if (!focusedMessageId) return;
@@ -1693,9 +1802,6 @@ function Chat({
 
     const response = await apiClient.post(UPLOAD_FILE_ROUTE, formData, {
       withCredentials: true,
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
       onUploadProgress: (progressEvent) => {
         if (typeof options.onProgress !== "function") return;
         const total = Number(progressEvent.total || file.size || 0);
@@ -2312,6 +2418,7 @@ function Chat({
   const handleSendMessage = async () => {
     if (
       !canSend ||
+      isSendingMessage ||
       (!isGroupChat && (isUserBlocked() || !canMessageDirectUser)) ||
       !socket ||
       !selectedChatData
@@ -2321,6 +2428,7 @@ function Chat({
     let optimisticMessageId = null;
 
     try {
+      setIsSendingMessage(true);
       const clientMessageId =
         globalThis.crypto?.randomUUID?.() ||
         `msg-${Date.now()}-${Math.random()}`;
@@ -2344,49 +2452,69 @@ function Chat({
       let preparedAttachmentFile = attachedFile.file;
       const pendingText = text;
       const pendingReplyId = replyingToMessage?._id || replyingToMessage?.id || null;
+      const optimisticContent =
+        pendingText ||
+        (attachedFile.file
+          ? messageType === "image"
+            ? "Image"
+            : messageType === "video"
+              ? "Video"
+              : messageType === "audio"
+                ? "Audio"
+                : "Document"
+          : "");
+
+      optimisticMessageId = `temp:${clientMessageId}`;
+      const optimisticPreviewMessage = {
+        _id: optimisticMessageId,
+        id: optimisticMessageId,
+        clientMessageId,
+        conversationKey: resolvedConversationKey,
+        sender: {
+          _id: userInfo?.id,
+          id: userInfo?.id,
+          firstName: userInfo?.firstName,
+          lastName: userInfo?.lastName,
+          email: userInfo?.email,
+          image: userInfo?.image,
+        },
+        recipient: isGroupChat ? undefined : selectedChatId,
+        group: isGroupChat ? selectedChatData?._id : undefined,
+        content: optimisticContent,
+        decryptedContent: pendingText || "",
+        messageType: attachedFile.file ? normalizeAttachmentKind(attachedFile.type, attachedFile.file.type) : "text",
+        timestamp: new Date().toISOString(),
+        status: "sending",
+        replyTo: pendingReplyId,
+        uploadStatus: attachedFile.file ? "preparing" : "sending",
+      };
+
+      const currentMessages = Array.isArray(useAppStore.getState().selectedChatMessages)
+        ? useAppStore.getState().selectedChatMessages
+        : [];
+      setSelectedChatMessages([...currentMessages, optimisticPreviewMessage]);
 
       if (attachedFile.file) {
         preparedAttachmentFile = await compressImageIfNeeded(attachedFile.file);
         messageType = normalizeAttachmentKind(attachedFile.type, preparedAttachmentFile.type);
-        optimisticMessageId = `temp:${Date.now()}`;
         const previewUrl = URL.createObjectURL(preparedAttachmentFile);
-        const currentMessages = Array.isArray(useAppStore.getState().selectedChatMessages)
-          ? useAppStore.getState().selectedChatMessages
-          : [];
-        setSelectedChatMessages([
-          ...currentMessages,
-          {
-            _id: optimisticMessageId,
-            id: optimisticMessageId,
-            sender: {
-              _id: userInfo?.id,
-              id: userInfo?.id,
-              firstName: userInfo?.firstName,
-              lastName: userInfo?.lastName,
-              email: userInfo?.email,
-              image: userInfo?.image,
-            },
-            content:
-              messageType === "audio" && preparedAttachmentFile?.name?.startsWith("voice-note-")
-                ? "Voice note"
-                : pendingText || (messageType === "image"
-                    ? "Image"
-                    : messageType === "video"
-                      ? "Video"
-                      : messageType === "audio"
-                        ? "Audio"
-                        : "Document"),
-            decryptedContent: pendingText || "",
-            messageType,
-            fileUrl: previewUrl,
-            localPreviewUrl: previewUrl,
-            timestamp: new Date().toISOString(),
-            status: "sending",
-            replyTo: pendingReplyId,
-            uploadStatus: "uploading",
-            uploadProgress: 0,
-          },
-        ]);
+        patchLocalMessage(optimisticMessageId, {
+          messageType,
+          content:
+            messageType === "audio" && preparedAttachmentFile?.name?.startsWith("voice-note-")
+              ? "Voice note"
+              : pendingText || (messageType === "image"
+                  ? "Image"
+                  : messageType === "video"
+                    ? "Video"
+                    : messageType === "audio"
+                      ? "Audio"
+                      : "Document"),
+          fileUrl: previewUrl,
+          localPreviewUrl: previewUrl,
+          uploadStatus: "uploading",
+          uploadProgress: 0,
+        });
         encryptedMediaPayload = await encryptMediaFileForConversation({
           file: preparedAttachmentFile,
           currentUserId: userInfo?.id,
@@ -2509,6 +2637,8 @@ function Chat({
       } else {
         toast.error(error.message || "Unable to send encrypted message.");
       }
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -3472,6 +3602,20 @@ function Chat({
           messages={filteredMessages}
           renderMessageRow={renderMessageRow}
         />
+        {hasPendingNewMessages && (
+          <button
+            type="button"
+            onClick={() => {
+              messageListRef.current?.scrollToBottom("smooth");
+              setHasPendingNewMessages(false);
+            }}
+            className={`absolute z-20 rounded-full bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_40px_rgba(34,211,238,0.24)] ${
+              isMobile ? "bottom-24 right-4" : "bottom-28 right-8"
+            }`}
+          >
+            New messages
+          </button>
+        )}
       </div>
 
       <div
@@ -3746,7 +3890,10 @@ function Chat({
             data-testid="chat-send-button"
             onClick={handleSendMessage}
             className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#22d3ee] text-white shadow-[0_18px_40px_rgba(34,211,238,0.2)] transition hover:scale-[1.02] ${isMobile ? "h-11 w-11 shrink-0" : "h-12 w-12"}`}
-            disabled={!isGroupChat && (isUserBlocked() || !canMessageDirectUser)}
+            disabled={
+              isSendingMessage ||
+              (!isGroupChat && (isUserBlocked() || !canMessageDirectUser))
+            }
           >
             <SendHorizonal className="h-4 w-4" />
           </button>

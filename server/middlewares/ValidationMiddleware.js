@@ -85,12 +85,12 @@ export const validateClerkSync = validator((req) => ({
 
 export const validateProfileUpdate = validator((req) => ({
   profile: {
-    firstName: asNamedSafeText("First name", req.body?.firstName, {
+    firstName: asNamedSafeText("First name", req.body?.firstName ?? req.body?.first_name, {
       min: 1,
       max: 80,
       allowEmpty: true,
     }),
-    lastName: asNamedSafeText("Last name", req.body?.lastName, {
+    lastName: asNamedSafeText("Last name", req.body?.lastName ?? req.body?.last_name, {
       min: 1,
       max: 80,
       allowEmpty: true,

@@ -57,6 +57,7 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
   useImperativeHandle(
     ref,
     () => ({
+      container: virtualRef.current?.container || null,
       scrollToBottom: (behavior = "smooth") => {
         virtualRef.current?.scrollToBottom(behavior);
       },
@@ -72,7 +73,7 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
   return (
     <VirtualStack
       ref={virtualRef}
-      className={`scrollbar-hide flex-1 overflow-x-hidden overflow-y-auto ${
+      className={`scrollbar-hide flex-1 overflow-x-hidden overflow-y-auto overscroll-x-none overscroll-y-contain touch-pan-y ${
         isMobile ? "px-3 py-4" : "px-7 py-8"
       }`}
       contentClassName={`w-full ${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}

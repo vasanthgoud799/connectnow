@@ -727,7 +727,7 @@ function Home({ activeUsers = [], callState }) {
                           transition={{ duration: 0.24 }}
                           className="themed-main-panel flex min-h-0 w-full max-w-full flex-1 overflow-hidden"
                         >
-                          <List />
+                          <List onOpenChat={() => setMobileChatView("chat")} />
                         </motion.div>
                       ) : (
                         <motion.div

@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useAppStore } from "@/store";
 import { Search as SearchIcon, Sparkles, X } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
-import { SEARCH_MESSAGES_ROUTE } from "@/utils/constants";
 
 function highlightMatch(text, query) {
   if (!query.trim()) return text;
@@ -26,13 +24,9 @@ function highlightMatch(text, query) {
 function Search({ onClose }) {
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [results, setResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
   const {
     selectedChatData,
-    selectedConversationKey,
     selectedChatMessages = [],
-    setSelectedChatMessages,
     setFocusedMessageId,
   } = useAppStore();
 
@@ -44,40 +38,34 @@ function Search({ onClose }) {
     return () => clearTimeout(timeoutId);
   }, [searchText]);
 
-  useEffect(() => {
-    const runSearch = async () => {
-      if (!debouncedSearch || !selectedChatData?._id) {
-        setResults([]);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const response = await apiClient.post(
-          SEARCH_MESSAGES_ROUTE,
-          selectedChatData?.isGroup
-            ? { groupId: selectedChatData._id, query: debouncedSearch, conversationKey: selectedConversationKey }
-            : { userId: selectedChatData._id, query: debouncedSearch, conversationKey: selectedConversationKey },
-          { withCredentials: true }
-        );
-
-        setResults(response.data.messages || []);
-      } catch (error) {
-        console.error("Error searching messages:", error);
-        setResults([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    runSearch();
-  }, [debouncedSearch, selectedChatData, selectedConversationKey]);
-
   const localMessageIds = useMemo(
     () => new Set(selectedChatMessages.map((message) => String(message._id || message.id))),
     [selectedChatMessages]
   );
+
+  const results = useMemo(() => {
+    if (!debouncedSearch || !selectedChatData?._id) {
+      return [];
+    }
+
+    const normalizedQuery = debouncedSearch.toLowerCase();
+    return selectedChatMessages.filter((message) => {
+      const previewText = [
+        message.decryptedContent,
+        message.content,
+        message.meta?.poll?.question,
+        ...(Array.isArray(message.meta?.poll?.options)
+          ? message.meta.poll.options.map((option) => option.text)
+          : []),
+        message.fileName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return previewText.includes(normalizedQuery);
+    });
+  }, [debouncedSearch, selectedChatData?._id, selectedChatMessages]);
 
   const resolvePreviewText = (message) => {
     if (message.messageType === "poll") {
@@ -89,13 +77,6 @@ function Search({ onClose }) {
 
   const jumpToMessage = (message) => {
     const targetId = String(message._id || message.id);
-    if (!localMessageIds.has(targetId)) {
-      const mergedMessages = [...selectedChatMessages, message].sort(
-        (a, b) => new Date(a.timestamp || a.createdAt || 0).getTime() - new Date(b.timestamp || b.createdAt || 0).getTime()
-      );
-      setSelectedChatMessages(mergedMessages);
-    }
-
     setFocusedMessageId(targetId);
   };
 
@@ -139,10 +120,6 @@ function Search({ onClose }) {
             <p className="themed-subtitle mt-2 text-sm leading-6">
               Results will appear here as you type. This keeps search focused and fast.
             </p>
-          </div>
-        ) : isLoading ? (
-          <div className="themed-page-card themed-subtitle rounded-[24px] px-4 py-6 text-center">
-            Searching messages...
           </div>
         ) : results.length === 0 ? (
           <div className="themed-page-card themed-subtitle rounded-[24px] px-4 py-6 text-center">

@@ -8,9 +8,7 @@ import {
   X,
 } from "lucide-react";
 
-import { apiClient } from "@/lib/api-client";
 import { useAppStore } from "@/store";
-import { GLOBAL_SEARCH_ROUTE } from "@/utils/constants";
 
 const SEARCH_TABS = [
   { id: "all", label: "All" },
@@ -22,14 +20,8 @@ const SEARCH_TABS = [
 
 function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
-  const [results, setResults] = useState({
-    users: [],
-    groups: [],
-    messages: [],
-    files: [],
-  });
-  const [isLoading, setIsLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("connectnow-recent-searches") || "[]");
@@ -37,36 +29,20 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
       return [];
     }
   });
-  const { chatSummaries } = useAppStore();
+  const { chatSummaries, contacts, fetchContacts } = useAppStore();
 
   useEffect(() => {
     if (!isOpen) return;
+    fetchContacts();
+  }, [fetchContacts, isOpen]);
 
-    const timeoutId = setTimeout(async () => {
-      if (!query.trim()) {
-        setResults({ users: [], groups: [], messages: [], files: [] });
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const response = await apiClient.get(GLOBAL_SEARCH_ROUTE, {
-          params: {
-            q: query,
-            tab: activeTab,
-          },
-          withCredentials: true,
-        });
-        setResults(response.data.results || {});
-      } catch (error) {
-        console.error("Error running global search:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    }, 250);
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedQuery(query.trim().toLowerCase());
+    }, 220);
 
     return () => clearTimeout(timeoutId);
-  }, [activeTab, isOpen, query]);
+  }, [query]);
 
   const saveRecentSearch = (value) => {
     if (!value.trim()) return;
@@ -75,15 +51,106 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
     localStorage.setItem("connectnow-recent-searches", JSON.stringify(next));
   };
 
-  const flatResults = useMemo(
-    () => [
-      ...(results.users || []).map((item) => ({ type: "user", item })),
-      ...(results.groups || []).map((item) => ({ type: "group", item })),
-      ...(results.messages || []).map((item) => ({ type: "message", item })),
-      ...(results.files || []).map((item) => ({ type: "file", item })),
-    ],
-    [results]
-  );
+  const results = useMemo(() => {
+    if (!debouncedQuery) {
+      return { users: [], groups: [], messages: [], files: [] };
+    }
+
+    const matchText = (value) => String(value || "").toLowerCase().includes(debouncedQuery);
+
+    const directChats = [];
+    const groupChats = [];
+    const messageChats = [];
+    const fileChats = [];
+
+    chatSummaries.forEach((chat) => {
+      const participant = chat.participant || {};
+      const group = chat.group || {};
+      const lastMessageText =
+        chat.lastMessage?.decryptedContent ||
+        chat.lastMessage?.content ||
+        chat.lastMessage?.messageType ||
+        "";
+
+      if (chat.chatType === "group") {
+        if (
+          matchText(group.name) ||
+          matchText(group.description) ||
+          matchText(lastMessageText)
+        ) {
+          groupChats.push(group);
+        }
+      } else if (
+        matchText(participant.firstName) ||
+        matchText(participant.lastName) ||
+        matchText(participant.email) ||
+        matchText(participant.username) ||
+        matchText(lastMessageText)
+      ) {
+        directChats.push(participant);
+      }
+
+      if (matchText(lastMessageText)) {
+        messageChats.push({
+          _id: chat.conversationKey,
+          conversationKey: chat.conversationKey,
+          content: lastMessageText,
+          createdAt: chat.lastMessage?.timestamp || chat.updatedAt,
+          sender: chat.participant,
+          group: chat.group,
+        });
+      }
+
+      if (
+        ["image", "video", "audio", "document"].includes(chat.lastMessage?.messageType) &&
+        (matchText(chat.lastMessage?.content) || matchText(chat.title))
+      ) {
+        fileChats.push({
+          _id: `${chat.conversationKey}:file`,
+          conversationKey: chat.conversationKey,
+          content: chat.lastMessage?.content || chat.lastMessage?.messageType,
+          createdAt: chat.lastMessage?.timestamp || chat.updatedAt,
+          group: chat.group,
+        });
+      }
+    });
+
+    const contactMatches = contacts.filter((contact) =>
+      [contact.firstName, contact.lastName, contact.email, contact.username]
+        .some((value) => matchText(value))
+    );
+
+    const dedupeById = (items) =>
+      items.filter(
+        (item, index, array) =>
+          index ===
+          array.findIndex((candidate) => String(candidate._id || candidate.id) === String(item._id || item.id))
+      );
+
+    return {
+      users: dedupeById([...contactMatches, ...directChats]),
+      groups: dedupeById(groupChats),
+      messages: messageChats,
+      files: fileChats,
+    };
+  }, [chatSummaries, contacts, debouncedQuery]);
+
+  const flatResults = useMemo(() => {
+    const mapped = [];
+    if (activeTab === "all" || activeTab === "users") {
+      mapped.push(...(results.users || []).map((item) => ({ type: "user", item })));
+    }
+    if (activeTab === "all" || activeTab === "groups") {
+      mapped.push(...(results.groups || []).map((item) => ({ type: "group", item })));
+    }
+    if (activeTab === "all" || activeTab === "messages") {
+      mapped.push(...(results.messages || []).map((item) => ({ type: "message", item })));
+    }
+    if (activeTab === "all" || activeTab === "files") {
+      mapped.push(...(results.files || []).map((item) => ({ type: "file", item })));
+    }
+    return mapped;
+  }, [activeTab, results]);
 
   const openSearchResult = (type, item) => {
     saveRecentSearch(query);
@@ -203,7 +270,7 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
           ))}
         </div>
 
-        {!query.trim() ? (
+        {!debouncedQuery ? (
           <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-[1.2fr_0.8fr] lg:overflow-visible lg:pr-0">
             <div className="themed-page-card rounded-[28px] p-6">
               <p className="themed-title mb-3 text-lg font-semibold">Recent searches</p>
@@ -241,10 +308,6 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
                 ))}
               </div>
             </div>
-          </div>
-        ) : isLoading ? (
-          <div className="themed-page-card flex flex-1 items-center justify-center rounded-[28px] text-sm">
-            Searching...
           </div>
         ) : (
           <div className="scrollbar-hide grid flex-1 gap-3 overflow-y-auto pr-2">

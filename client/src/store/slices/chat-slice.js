@@ -1,32 +1,125 @@
+const sortChats = (items = []) =>
+  [...items].sort((a, b) => {
+    const pinDelta = Number(b.pinnedOrder || 0) - Number(a.pinnedOrder || 0);
+    if (pinDelta !== 0) return pinDelta;
+
+    return (
+      new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime() -
+      new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime()
+    );
+  });
+
+const updateCachedMessages = (messagesByConversationKey = {}, updater) =>
+  Object.fromEntries(
+    Object.entries(messagesByConversationKey).map(([conversationKey, messages]) => [
+      conversationKey,
+      updater(Array.isArray(messages) ? messages : [], conversationKey),
+    ])
+  );
+
+const getConversationKeyForSelection = (chatSummaries = [], selectedChatData, fallbackKey) => {
+  const selectedChatId = selectedChatData?._id || selectedChatData?.id;
+  return (
+    chatSummaries.find((chat) => {
+      if (selectedChatData?.isGroup) {
+        return chat.conversationKey === selectedChatData?.conversationKey;
+      }
+
+      const participantId = chat.participant?._id || chat.participant?.id;
+      return String(participantId) === String(selectedChatId);
+    })?.conversationKey || fallbackKey
+  );
+};
+
 export const createChatSlice = (set, get) => ({
   selectedChatData: undefined,
   selectedConversationKey: undefined,
   focusedMessageId: undefined,
-  setSelectedConversationKey: (selectedConversationKey) => set({ selectedConversationKey }),
-  setFocusedMessageId: (focusedMessageId) => set({ focusedMessageId }),
-  setSelectedChatData: (selectedChatData) => {
-    const selectedChatId = selectedChatData?._id || selectedChatData?.id;
-
+  messagesByConversationKey: {},
+  messagesLoadedByConversationKey: {},
+  messagesLoadingByConversationKey: {},
+  setSelectedConversationKey: (selectedConversationKey) =>
     set((state) => ({
-      selectedChatData,
-      selectedConversationKey:
-        state.chatSummaries.find((chat) => {
-          if (selectedChatData?.isGroup) {
-            return chat.conversationKey === selectedChatData?.conversationKey;
-          }
+      selectedConversationKey,
+      selectedChatMessages: Array.isArray(
+        state.messagesByConversationKey?.[selectedConversationKey]
+      )
+        ? state.messagesByConversationKey[selectedConversationKey]
+        : [],
+    })),
+  setFocusedMessageId: (focusedMessageId) => set({ focusedMessageId }),
+  setSelectedChatData: (selectedChatData) =>
+    set((state) => {
+      const nextConversationKey = getConversationKeyForSelection(
+        state.chatSummaries,
+        selectedChatData,
+        state.selectedConversationKey
+      );
 
-          const participantId = chat.participant?._id || chat.participant?.id;
-          return String(participantId) === String(selectedChatId);
-        })?.conversationKey || state.selectedConversationKey,
-    }));
-  },
+      return {
+        selectedChatData,
+        selectedConversationKey: nextConversationKey,
+        selectedChatMessages: Array.isArray(
+          state.messagesByConversationKey?.[nextConversationKey]
+        )
+          ? state.messagesByConversationKey[nextConversationKey]
+          : [],
+      };
+    }),
   selectedChatMessages: [],
   setSelectedChatMessages: (selectedChatMessages) =>
-    set({
-      selectedChatMessages: Array.isArray(selectedChatMessages)
+    set((state) => {
+      const normalizedMessages = Array.isArray(selectedChatMessages)
         ? selectedChatMessages
-        : [],
+        : [];
+      const conversationKey = state.selectedConversationKey;
+
+      return {
+        selectedChatMessages: normalizedMessages,
+        messagesByConversationKey: conversationKey
+          ? {
+              ...state.messagesByConversationKey,
+              [conversationKey]: normalizedMessages,
+            }
+          : state.messagesByConversationKey,
+      };
     }),
+  setConversationMessages: (conversationKey, messages, { loaded = true } = {}) =>
+    set((state) => {
+      const normalizedMessages = Array.isArray(messages) ? messages : [];
+      return {
+        messagesByConversationKey: {
+          ...state.messagesByConversationKey,
+          [conversationKey]: normalizedMessages,
+        },
+        messagesLoadedByConversationKey: {
+          ...state.messagesLoadedByConversationKey,
+          [conversationKey]: loaded,
+        },
+        messagesLoadingByConversationKey: {
+          ...state.messagesLoadingByConversationKey,
+          [conversationKey]: false,
+        },
+        selectedChatMessages:
+          state.selectedConversationKey === conversationKey
+            ? normalizedMessages
+            : state.selectedChatMessages,
+      };
+    }),
+  setConversationMessagesLoading: (conversationKey, isLoading) =>
+    set((state) => ({
+      messagesLoadingByConversationKey: {
+        ...state.messagesLoadingByConversationKey,
+        [conversationKey]: isLoading,
+      },
+    })),
+  invalidateConversationMessages: (conversationKey) =>
+    set((state) => ({
+      messagesLoadedByConversationKey: {
+        ...state.messagesLoadedByConversationKey,
+        [conversationKey]: false,
+      },
+    })),
   updateSelectedGroupData: (groupPayload) =>
     set((state) => {
       if (!state.selectedChatData?.isGroup) {
@@ -78,7 +171,7 @@ export const createChatSlice = (set, get) => ({
 
       if (existingIndex === -1) {
         return {
-          chatSummaries: [nextChat, ...state.chatSummaries],
+          chatSummaries: sortChats([nextChat, ...state.chatSummaries]),
         };
       }
 
@@ -87,22 +180,13 @@ export const createChatSlice = (set, get) => ({
         ...updatedChats[existingIndex],
         ...nextChat,
       };
-      updatedChats.sort((a, b) => {
-        const pinDelta = Number(b.pinnedOrder || 0) - Number(a.pinnedOrder || 0);
-        if (pinDelta !== 0) return pinDelta;
 
-        return (
-          new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime() -
-          new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime()
-        );
-      });
-
-      return { chatSummaries: updatedChats };
+      return { chatSummaries: sortChats(updatedChats) };
     }),
   updateChatPreference: (conversationKey, preference) =>
     set((state) => ({
-      chatSummaries: state.chatSummaries
-        .map((chat) =>
+      chatSummaries: sortChats(
+        state.chatSummaries.map((chat) =>
           chat.conversationKey === conversationKey
             ? {
                 ...chat,
@@ -110,15 +194,7 @@ export const createChatSlice = (set, get) => ({
               }
             : chat
         )
-        .sort((a, b) => {
-          const pinDelta = Number(b.pinnedOrder || 0) - Number(a.pinnedOrder || 0);
-          if (pinDelta !== 0) return pinDelta;
-
-          return (
-            new Date(b.lastMessage?.timestamp || b.updatedAt || 0).getTime() -
-            new Date(a.lastMessage?.timestamp || a.updatedAt || 0).getTime()
-          );
-        }),
+      ),
     })),
   updateMessageStatus: (messageId, statusPayload) =>
     set((state) => ({
@@ -131,6 +207,18 @@ export const createChatSlice = (set, get) => ({
           ...statusPayload,
         };
       }),
+      messagesByConversationKey: updateCachedMessages(
+        state.messagesByConversationKey,
+        (messages) =>
+          messages.map((message) => {
+            const currentId = String(message._id || message.id);
+            if (currentId !== String(messageId)) return message;
+            return {
+              ...message,
+              ...statusPayload,
+            };
+          })
+      ),
       chatSummaries: state.chatSummaries.map((chat) => {
         if (String(chat.lastMessage?.messageId) !== String(messageId)) return chat;
 
@@ -156,6 +244,18 @@ export const createChatSlice = (set, get) => ({
               }
             : message
         ),
+        messagesByConversationKey: updateCachedMessages(
+          state.messagesByConversationKey,
+          (messages) =>
+            messages.map((message) =>
+              String(message._id || message.id) === nextMessageId
+                ? {
+                    ...message,
+                    ...nextMessage,
+                  }
+                : message
+            )
+        ),
         chatSummaries: state.chatSummaries.map((chat) =>
           String(chat.lastMessage?.messageId) === nextMessageId
             ? {
@@ -179,6 +279,13 @@ export const createChatSlice = (set, get) => ({
     set((state) => ({
       selectedChatMessages: state.selectedChatMessages.filter(
         (message) => String(message._id || message.id) !== String(messageId)
+      ),
+      messagesByConversationKey: updateCachedMessages(
+        state.messagesByConversationKey,
+        (messages) =>
+          messages.filter(
+            (message) => String(message._id || message.id) !== String(messageId)
+          )
       ),
     })),
   setUnreadCount: (conversationKey, unreadCount) =>
@@ -215,6 +322,8 @@ export const createChatSlice = (set, get) => ({
       selectedChatData,
       selectedConversationKey,
       selectedChatMessages,
+      messagesByConversationKey,
+      messagesLoadedByConversationKey,
       chatSummaries,
       userInfo,
       setUnreadCount,
@@ -247,19 +356,42 @@ export const createChatSlice = (set, get) => ({
         (selectedGroupId && String(incomingGroupId) === String(selectedGroupId))
       : recipientId === selectedChatId || senderId === selectedChatId;
 
-    if (!exists && isActiveConversation) {
-      set({
-        selectedChatMessages: [
-          ...selectedChatMessages,
-          {
-            ...message,
-            recipient: recipientId,
-            sender: senderId,
-            id: messageId,
-          },
-        ],
-      });
-    }
+    const normalizedMessage = {
+      ...message,
+      recipient: recipientId,
+      sender: senderId,
+      id: messageId,
+    };
+
+    const currentConversationMessages = Array.isArray(messagesByConversationKey?.[conversationKey])
+      ? messagesByConversationKey[conversationKey]
+      : [];
+    const cachedExists = currentConversationMessages.some(
+      (msg) => String(msg._id || msg.id) === String(messageId)
+    );
+
+    set((state) => ({
+      selectedChatMessages:
+        !exists && isActiveConversation
+          ? [...selectedChatMessages, normalizedMessage]
+          : state.selectedChatMessages,
+      messagesByConversationKey:
+        isActiveConversation || messagesLoadedByConversationKey?.[conversationKey]
+          ? {
+              ...state.messagesByConversationKey,
+              [conversationKey]: cachedExists
+                ? currentConversationMessages
+                : [...currentConversationMessages, normalizedMessage],
+            }
+          : state.messagesByConversationKey,
+      messagesLoadedByConversationKey:
+        isActiveConversation || messagesLoadedByConversationKey?.[conversationKey]
+          ? {
+              ...state.messagesLoadedByConversationKey,
+              [conversationKey]: true,
+            }
+          : state.messagesLoadedByConversationKey,
+    }));
 
     const existingChat = chatSummaries.find(
       (chat) => chat.conversationKey === conversationKey

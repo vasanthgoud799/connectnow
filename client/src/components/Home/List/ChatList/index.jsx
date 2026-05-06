@@ -29,7 +29,7 @@ const CreateGroup = lazy(() => import("./CreateGroup"));
 
 const CHAT_TABS = ["All", "Unread", "Groups", "Favorites"];
 
-function ChatList() {
+function ChatList({ onOpenChat }) {
   const [searchText, setSearchText] = useState("");
   const [showAddUser, setShowAddUser] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -255,6 +255,7 @@ function ChatList() {
                             : participant
                         );
                         setUnreadCount(chat.conversationKey, 0);
+                        onOpenChat?.();
                       }}
                       onOpenMenu={(event) => {
                         const rect = event.currentTarget.getBoundingClientRect();

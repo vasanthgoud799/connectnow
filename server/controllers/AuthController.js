@@ -179,6 +179,7 @@ const buildUserPayload = (user) => {
     receivedRequests: user.receivedRequests,
     firstName: user.firstName,
     lastName: user.lastName,
+    about: user.about,
     image: user.image,
     blockedUsers: user.blockedUsers,
     birthday: user.birthday,
@@ -400,8 +401,14 @@ export const updateProfile = async (req, res) => {
     const profile = req.validated?.profile || {};
     const hasField = (field) =>
       Object.prototype.hasOwnProperty.call(req.body || {}, field);
-    const safeFirstName = normalizeProfileText(profile.firstName, 80);
-    const safeLastName = normalizeProfileText(profile.lastName, 80);
+    const safeFirstName = normalizeProfileText(
+      profile.firstName ?? req.body?.first_name,
+      80
+    );
+    const safeLastName = normalizeProfileText(
+      profile.lastName ?? req.body?.last_name,
+      80
+    );
     const safeAbout = normalizeProfileText(profile.about, 500);
     const image = profile.image;
     const imageUpload = profile.imageUpload;
@@ -420,7 +427,14 @@ export const updateProfile = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const nextFirstName = safeFirstName || existingUser.firstName || "";
+    const inferredFirstName =
+      existingUser.firstName ||
+      String(existingUser.email || "")
+        .split("@")[0]
+        ?.replace(/[._-]+/g, " ")
+        .trim() ||
+      "ConnectNow";
+    const nextFirstName = safeFirstName || inferredFirstName;
     const nextLastName = safeLastName || existingUser.lastName || "";
     const nextImage = imageUpload?.storagePath
       ? buildStableUserAvatarUrl({ req, userId })
@@ -431,14 +445,6 @@ export const updateProfile = async (req, res) => {
         ? profile.birthday
         : null
       : existingUser.birthday || null;
-
-    if (!nextFirstName) {
-      return res.status(400).json({ message: "First name is required." });
-    }
-
-    if (!nextLastName) {
-      return res.status(400).json({ message: "Last name is required." });
-    }
 
     const updatePayload = {
       firstName: nextFirstName,

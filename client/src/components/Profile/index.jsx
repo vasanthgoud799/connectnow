@@ -94,21 +94,25 @@ function Profile() {
   const normalizedFirstName = firstName.trim();
   const normalizedLastName = lastName.trim();
   const normalizedAbout = about.trim();
-  const resolvedExistingFirstName = String(userInfo?.firstName || "").trim();
-  const resolvedExistingLastName = String(userInfo?.lastName || "").trim();
+  const resolvedExistingFirstName = String(
+    userInfo?.firstName || clerkUser?.firstName || ""
+  ).trim();
+  const resolvedExistingLastName = String(
+    userInfo?.lastName || clerkUser?.lastName || ""
+  ).trim();
   const resolvedFirstName = normalizedFirstName || resolvedExistingFirstName;
   const resolvedLastName = normalizedLastName || resolvedExistingLastName;
 
   useEffect(() => {
-    setFirstName(userInfo?.firstName || "");
-    setLastName(userInfo?.lastName || "");
+    setFirstName(userInfo?.firstName || clerkUser?.firstName || "");
+    setLastName(userInfo?.lastName || clerkUser?.lastName || "");
     setAbout(userInfo?.about || "");
     setImage(userInfo?.image || "");
     setBirthday(
       userInfo?.birthday ? new Date(userInfo.birthday).toISOString().slice(0, 10) : ""
     );
     setImageFile(null);
-  }, [userInfo]);
+  }, [clerkUser?.firstName, clerkUser?.lastName, userInfo]);
 
   useEffect(() => {
     let ignore = false;
