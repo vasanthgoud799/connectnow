@@ -1342,8 +1342,7 @@ function Chat({
       ? messagesByConversationKey[resolvedConversationKey]
       : [];
 
-    if (resolvedConversationKey && cachedMessages.length) {
-      setSelectedChatMessages(cachedMessages);
+    if (resolvedConversationKey && selectedConversationKey !== resolvedConversationKey) {
       setSelectedConversationKey(resolvedConversationKey);
     }
 
@@ -1424,13 +1423,11 @@ function Chat({
     loadMessages();
   }, [
     isGroupChat,
-    messagesByConversationKey,
-    messagesLoadedByConversationKey,
     resolvedConversationKey,
     selectedChatId,
+    selectedConversationKey,
     setConversationMessages,
     setConversationMessagesLoading,
-    setSelectedChatMessages,
     setSelectedConversationKey,
     userInfo?.id,
   ]);
