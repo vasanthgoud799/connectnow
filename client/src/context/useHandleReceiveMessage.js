@@ -4,6 +4,7 @@ import {
   decryptIncomingMessage,
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
+import { normalizeMessage } from "@/utils/chatMessages";
 import {
   dispatchOpenChatFromNotification,
   showBrowserNotification,
@@ -70,13 +71,14 @@ const useHandleReceiveMessage = (socket) => {
     if (!socket) return;
 
     const handleReceiveMessage = (message) => {
+      const normalizedIncomingMessage = normalizeMessage(message);
       socket.emit("message_received_ack", {
-        messageId: message?._id || message?.id,
-        conversationKey: message?.conversationKey,
+        messageId: normalizedIncomingMessage?._id || normalizedIncomingMessage?.id,
+        conversationKey: normalizedIncomingMessage?.conversationKey,
       });
 
       decryptIncomingMessage({
-        message,
+        message: normalizedIncomingMessage,
         currentUserId: useAppStore.getState().userInfo?.id,
       })
         .then((nextMessage) => {
@@ -138,7 +140,7 @@ const useHandleReceiveMessage = (socket) => {
             })
             .catch(() => {});
         })
-        .catch(() => addMessages(message));
+        .catch(() => addMessages(normalizedIncomingMessage));
     };
 
     const handleDelivered = (payload) => {

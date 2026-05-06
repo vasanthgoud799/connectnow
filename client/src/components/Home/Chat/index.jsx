@@ -75,6 +75,13 @@ import {
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
 import { useTrustStatus } from "./hooks/useTrustStatus";
+import {
+  areSameMessage,
+  mergeMessages,
+  normalizeMessage,
+  removeMessage,
+  sortMessagesChronologically,
+} from "@/utils/chatMessages";
 
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
 const AIAssistModal = lazy(() => import("./AIAssistModal"));
@@ -187,6 +194,11 @@ function normalizeAttachmentKind(type = "", fileType = "") {
   }
 
   return "document";
+}
+
+function getDirectConversationKey(userA, userB) {
+  if (!userA || !userB) return undefined;
+  return [String(userA), String(userB)].sort().join(":");
 }
 
 function renderTextWithMentions(text = "") {
@@ -1089,6 +1101,7 @@ function Chat({
   const [groupE2eeBlockedMembers, setGroupE2eeBlockedMembers] = useState([]);
   const [isDecryptingMessages, setIsDecryptingMessages] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [messageLoadError, setMessageLoadError] = useState("");
   const [hasPendingNewMessages, setHasPendingNewMessages] = useState(false);
   const [isAtMessageBottom, setIsAtMessageBottom] = useState(true);
 
@@ -1101,7 +1114,6 @@ function Chat({
     setFocusedMessageId,
     setSelectedConversationKey,
     selectedChatMessages,
-    setSelectedChatMessages,
     chatSummaries,
     messagesByConversationKey,
     messagesLoadedByConversationKey,
@@ -1126,9 +1138,10 @@ function Chat({
       chatSummaries.find((chat) => {
         const participantId = chat.participant?._id || chat.participant?.id;
         return String(participantId) === String(selectedChatId);
-      })?.conversationKey || undefined
+      })?.conversationKey ||
+      getDirectConversationKey(userInfo?.id, selectedChatId)
     );
-  }, [chatSummaries, isGroupChat, selectedChatId, selectedConversationKey]);
+  }, [chatSummaries, isGroupChat, selectedChatId, selectedConversationKey, userInfo?.id]);
 
   const socket = useSocket();
   const messageListRef = useRef(null);
@@ -1137,6 +1150,7 @@ function Chat({
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const sendingMessageRef = useRef(false);
 
   useHandleReceiveMessage(socket);
 
@@ -1342,7 +1356,10 @@ function Chat({
       ? messagesByConversationKey[resolvedConversationKey]
       : [];
 
-    if (resolvedConversationKey && selectedConversationKey !== resolvedConversationKey) {
+    if (
+      resolvedConversationKey &&
+      useAppStore.getState().selectedConversationKey !== resolvedConversationKey
+    ) {
       setSelectedConversationKey(resolvedConversationKey);
     }
 
@@ -1352,6 +1369,7 @@ function Chat({
 
     const loadMessages = async () => {
       try {
+        setMessageLoadError("");
         const pendingConversationKey =
           resolvedConversationKey || (isGroupChat ? `group:${selectedChatId}` : null);
         if (pendingConversationKey) {
@@ -1370,7 +1388,12 @@ function Chat({
         if (requestId !== latestMessagesRequestRef.current) return;
 
         const rawMessages = Array.isArray(response.data?.messages)
-          ? response.data.messages
+          ? response.data.messages.map((message) =>
+              normalizeMessage(message, {
+                conversationKey:
+                  response.data?.conversationKey || pendingConversationKey,
+              })
+            )
           : [];
         const nextConversationKey =
           response.data?.conversationKey || pendingConversationKey;
@@ -1410,6 +1433,7 @@ function Chat({
           });
       } catch (err) {
         console.error("Error fetching messages:", err);
+        setMessageLoadError("Unable to load messages right now.");
       } finally {
         if (resolvedConversationKey) {
           setConversationMessagesLoading(resolvedConversationKey, false);
@@ -1425,7 +1449,6 @@ function Chat({
     isGroupChat,
     resolvedConversationKey,
     selectedChatId,
-    selectedConversationKey,
     setConversationMessages,
     setConversationMessagesLoading,
     setSelectedConversationKey,
@@ -1864,28 +1887,49 @@ function Chat({
     setEditingMessageId(null);
   };
 
-  const patchLocalMessage = (messageId, updater) => {
-    const currentMessages = Array.isArray(useAppStore.getState().selectedChatMessages)
-      ? useAppStore.getState().selectedChatMessages
+  const mergeConversationMessageSet = (conversationKey, incomingMessages, options = {}) => {
+    if (!conversationKey) return;
+
+    const currentMessages = Array.isArray(
+      useAppStore.getState().messagesByConversationKey?.[conversationKey]
+    )
+      ? useAppStore.getState().messagesByConversationKey[conversationKey]
       : [];
-    setSelectedChatMessages(
-      currentMessages.map((message) =>
-        String(message._id || message.id) === String(messageId)
-          ? { ...message, ...updater }
-          : message
-      )
+
+    setConversationMessages(
+      conversationKey,
+      mergeMessages(currentMessages, incomingMessages),
+      { loaded: options.loaded ?? true }
     );
   };
 
-  const removeLocalMessage = (messageId) => {
-    const currentMessages = Array.isArray(useAppStore.getState().selectedChatMessages)
-      ? useAppStore.getState().selectedChatMessages
+  const patchLocalMessage = (conversationKey, messageLike, updater) => {
+    if (!conversationKey || !messageLike) return;
+
+    const currentMessages = Array.isArray(
+      useAppStore.getState().messagesByConversationKey?.[conversationKey]
+    )
+      ? useAppStore.getState().messagesByConversationKey[conversationKey]
       : [];
-    setSelectedChatMessages(
-      currentMessages.filter(
-        (message) => String(message._id || message.id) !== String(messageId)
-      )
+
+    mergeConversationMessageSet(
+      conversationKey,
+      currentMessages
+        .filter((message) => areSameMessage(message, messageLike))
+        .map((message) => ({ ...message, ...updater }))
     );
+  };
+
+  const removeLocalMessage = (conversationKey, messageLike) => {
+    if (!conversationKey || !messageLike) return;
+
+    const currentMessages = Array.isArray(
+      useAppStore.getState().messagesByConversationKey?.[conversationKey]
+    )
+      ? useAppStore.getState().messagesByConversationKey[conversationKey]
+      : [];
+
+    setConversationMessages(conversationKey, removeMessage(currentMessages, messageLike));
   };
 
   const buildEncryptedPayload = async (
@@ -2416,6 +2460,7 @@ function Chat({
     if (
       !canSend ||
       isSendingMessage ||
+      sendingMessageRef.current ||
       (!isGroupChat && (isUserBlocked() || !canMessageDirectUser)) ||
       !socket ||
       !selectedChatData
@@ -2423,10 +2468,14 @@ function Chat({
       return;
 
     let optimisticMessageId = null;
+    let clientMessageId = null;
+    let shouldRetryAfterKeyInit = false;
+    let retryConversationKey = resolvedConversationKey;
 
     try {
+      sendingMessageRef.current = true;
       setIsSendingMessage(true);
-      const clientMessageId =
+      clientMessageId =
         globalThis.crypto?.randomUUID?.() ||
         `msg-${Date.now()}-${Math.random()}`;
 
@@ -2449,6 +2498,12 @@ function Chat({
       let preparedAttachmentFile = attachedFile.file;
       const pendingText = text;
       const pendingReplyId = replyingToMessage?._id || replyingToMessage?.id || null;
+      const activeConversationKey =
+        resolvedConversationKey ||
+        (isGroupChat
+          ? `group:${selectedChatId}`
+          : getDirectConversationKey(userInfo?.id, selectedChatId));
+      retryConversationKey = activeConversationKey;
       const optimisticContent =
         pendingText ||
         (attachedFile.file
@@ -2466,7 +2521,7 @@ function Chat({
         _id: optimisticMessageId,
         id: optimisticMessageId,
         clientMessageId,
-        conversationKey: resolvedConversationKey,
+        conversationKey: activeConversationKey,
         sender: {
           _id: userInfo?.id,
           id: userInfo?.id,
@@ -2486,16 +2541,13 @@ function Chat({
         uploadStatus: attachedFile.file ? "preparing" : "sending",
       };
 
-      const currentMessages = Array.isArray(useAppStore.getState().selectedChatMessages)
-        ? useAppStore.getState().selectedChatMessages
-        : [];
-      setSelectedChatMessages([...currentMessages, optimisticPreviewMessage]);
+      mergeConversationMessageSet(activeConversationKey, optimisticPreviewMessage);
 
       if (attachedFile.file) {
         preparedAttachmentFile = await compressImageIfNeeded(attachedFile.file);
         messageType = normalizeAttachmentKind(attachedFile.type, preparedAttachmentFile.type);
         const previewUrl = URL.createObjectURL(preparedAttachmentFile);
-        patchLocalMessage(optimisticMessageId, {
+        patchLocalMessage(activeConversationKey, { clientMessageId }, {
           messageType,
           content:
             messageType === "audio" && preparedAttachmentFile?.name?.startsWith("voice-note-")
@@ -2523,12 +2575,12 @@ function Chat({
           originalMimeType: preparedAttachmentFile.type,
           onProgress: (progress) => {
             if (optimisticMessageId) {
-              patchLocalMessage(optimisticMessageId, { uploadProgress: progress });
+              patchLocalMessage(activeConversationKey, { clientMessageId }, { uploadProgress: progress });
             }
           },
         });
         if (optimisticMessageId) {
-          patchLocalMessage(optimisticMessageId, {
+          patchLocalMessage(activeConversationKey, { clientMessageId }, {
             uploadStatus: "processing",
             uploadProgress: 100,
           });
@@ -2577,18 +2629,27 @@ function Chat({
         },
         (ack) => {
           if (!ack?.ok) {
-            console.error("Message send failed:", ack?.error);
             if (optimisticMessageId) {
-              patchLocalMessage(optimisticMessageId, {
+              patchLocalMessage(activeConversationKey, { clientMessageId }, {
                 uploadStatus: "failed",
+                status: "failed",
                 uploadError: ack?.error || "Failed to send",
               });
             }
             toast.error(ack?.error || "Failed to send message.");
             return;
           }
-          if (optimisticMessageId) {
-            removeLocalMessage(optimisticMessageId);
+          if (optimisticMessageId && ack?.message) {
+            mergeConversationMessageSet(activeConversationKey, {
+              ...ack.message,
+              clientMessageId,
+              conversationKey:
+                ack.message.conversationKey || activeConversationKey,
+              status: ack.message.status || "sent",
+              uploadStatus: null,
+              uploadError: null,
+              uploadProgress: 100,
+            });
           }
         }
       );
@@ -2599,8 +2660,9 @@ function Chat({
       setShowAttachmentMenu(false);
     } catch (error) {
       if (typeof optimisticMessageId !== "undefined" && optimisticMessageId) {
-        patchLocalMessage(optimisticMessageId, {
+        patchLocalMessage(retryConversationKey, { clientMessageId }, {
           uploadStatus: "failed",
+          status: "failed",
           uploadError: error?.message || "Failed to send",
         });
       }
@@ -2614,28 +2676,42 @@ function Chat({
         const initialized = await waitForConversationKeys(missingRecipientIds);
 
         if (initialized) {
-          handleSendMessage();
-          return;
+          removeLocalMessage(retryConversationKey, {
+            clientMessageId,
+          });
+          shouldRetryAfterKeyInit = true;
         }
       }
 
-      console.error("Unable to encrypt/send message:", error);
+      if (!shouldRetryAfterKeyInit) {
+        console.error("Unable to encrypt/send message:", error);
+      }
       if (
-        error?.code === "GROUP_E2EE_MISSING_MEMBERS" ||
-        error?.code === "GROUP_E2EE_NO_READY_RECIPIENTS"
+        !shouldRetryAfterKeyInit &&
+        (
+          error?.code === "GROUP_E2EE_MISSING_MEMBERS" ||
+          error?.code === "GROUP_E2EE_NO_READY_RECIPIENTS"
+        )
       ) {
         toast.error(
           "Some group members have not initialized encrypted messaging yet. ConnectNow is waiting for them to come online and create keys."
         );
-      } else if (error?.code === "DIRECT_E2EE_MISSING_RECIPIENT") {
+      } else if (!shouldRetryAfterKeyInit && error?.code === "DIRECT_E2EE_MISSING_RECIPIENT") {
         toast.error(
           "This contact has not initialized encrypted messaging yet. If they are online, ConnectNow is trying to prepare it now."
         );
-      } else {
+      } else if (!shouldRetryAfterKeyInit) {
         toast.error(error.message || "Unable to send encrypted message.");
       }
     } finally {
       setIsSendingMessage(false);
+      sendingMessageRef.current = false;
+    }
+
+    if (shouldRetryAfterKeyInit) {
+      queueMicrotask(() => {
+        handleSendMessage();
+      });
     }
   };
 
@@ -2761,34 +2837,15 @@ function Chat({
       ? selectedChatMessages
       : [];
 
-    if (!selectedChatData?._id) return [];
-
-    if (isGroupChat) {
-      return messages.filter((message) => {
-        const messageGroupId =
-          typeof message.group === "string"
-            ? message.group
-            : message.group?._id || message.group?.id;
-
-        return String(messageGroupId) === String(selectedChatData._id);
-      });
-    }
-
-    return messages.filter((message) => {
-      const senderId =
-        typeof message.sender === "string"
-          ? message.sender
-          : message.sender?._id || message.sender?.id;
-      const recipientId =
-        typeof message.recipient === "string"
-          ? message.recipient
-          : message.recipient?._id || message.recipient?.id;
-
-      return (
-        recipientId === selectedChatData._id || senderId === selectedChatData._id
-      );
-    });
-  }, [isGroupChat, selectedChatData, selectedChatMessages]);
+    if (!resolvedConversationKey) return [];
+    return sortMessagesChronologically(
+      messages
+        .map((message) => normalizeMessage(message, { conversationKey: resolvedConversationKey }))
+        .filter(
+          (message) => message && message.conversationKey === resolvedConversationKey
+        )
+    );
+  }, [resolvedConversationKey, selectedChatMessages]);
 
   const pinnedMessages = useMemo(
     () =>
@@ -3289,18 +3346,25 @@ function Chat({
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none touch-pan-y">
+    <div className="flex h-[100dvh] min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none touch-pan-y">
       <div
-        className={`relative z-40 flex items-center justify-between border-b border-white/8 backdrop-blur-xl ${
-          isMobile ? "h-[74px] px-3" : "h-[88px] px-7"
+        className={`relative z-40 shrink-0 border-b border-white/8 backdrop-blur-xl ${
+          isMobile
+            ? "min-h-[calc(72px+env(safe-area-inset-top))] px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]"
+            : "h-[88px] px-7"
         }`}
       >
-        <div className="flex min-w-0 items-center gap-4">
+        <div
+          className={`flex items-center justify-between ${
+            isMobile ? "min-h-[56px] gap-3" : "h-full"
+          }`}
+        >
+        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
           {isMobile && (
             <button
               type="button"
               onClick={onBack}
-              className="themed-panel-soft flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl transition hover:text-white"
+              className="themed-panel-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition hover:text-white"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
@@ -3326,7 +3390,7 @@ function Chat({
             role="button"
             tabIndex={0}
             onClick={onToggleDetail}
-            className="min-w-0 text-left"
+            className="min-w-0 flex-1 text-left"
             title="Open contact info"
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -3337,7 +3401,7 @@ function Chat({
           >
             <p
               className={`truncate font-['Space_Grotesk'] font-semibold tracking-[-0.02em] ${
-                isMobile ? "text-[1.15rem]" : "text-[1.35rem]"
+                isMobile ? "text-[1.05rem] leading-5" : "text-[1.35rem]"
               }`}
             >
               {isGroupChat
@@ -3346,7 +3410,11 @@ function Chat({
                     .filter(Boolean)
                     .join(" ") || selectedChatData?.email}
             </p>
-            <p className={`text-sm ${isSelectedUserOnline ? "text-cyan-300" : "text-slate-500"}`}>
+            <p
+              className={`truncate ${
+                isMobile ? "pt-0.5 text-xs leading-4" : "text-sm"
+              } ${isSelectedUserOnline ? "text-cyan-300" : "text-slate-500"}`}
+            >
               {isGroupChat
                 ? `${selectedChatData?.memberCount || selectedChatData?.members?.length || 0} members`
                 : isSelectedUserOnline
@@ -3370,7 +3438,11 @@ function Chat({
           </div>
         </div>
 
-        <div className={`flex items-center text-slate-400 ${isMobile ? "gap-2" : "gap-3"}`}>
+        <div
+          className={`flex shrink-0 items-center text-slate-400 ${
+            isMobile ? "gap-2" : "gap-3"
+          }`}
+        >
           {!isGroupChat && (
             <button
               type="button"
@@ -3459,7 +3531,7 @@ function Chat({
             <div className="relative z-50">
               <button
                 type="button"
-                className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                className="themed-panel-soft flex h-11 w-11 items-center justify-center rounded-2xl transition hover:text-white"
                 onClick={() => setShowMobileHeaderMenu((prev) => !prev)}
               >
                 <MoreVertical className="h-4 w-4" />
@@ -3559,6 +3631,7 @@ function Chat({
             </div>
           )}
         </div>
+        </div>
       </div>
       {!isGroupChat && contactTrustState?.status === "changed" && (
         <div className="border-b border-rose-400/15 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
@@ -3616,11 +3689,17 @@ function Chat({
       </div>
 
       <div
-        className={`border-t border-white/8 bg-black/5 backdrop-blur-xl ${
-          isMobile ? "sticky bottom-0 z-20 px-3 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]" : "px-7 py-5"
+        className={`shrink-0 border-t border-white/8 bg-black/5 backdrop-blur-xl ${
+          isMobile
+            ? "z-20 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3"
+            : "px-7 py-5"
         }`}
       >
-        <div className={`relative mx-auto flex w-full max-w-5xl items-center ${isMobile ? "gap-2" : "gap-3"}`}>
+        <div
+          className={`relative mx-auto flex w-full max-w-5xl items-center ${
+            isMobile ? "min-h-[56px] gap-2" : "gap-3"
+          }`}
+        >
           {(replyingToMessage || editingMessageId) && (
             <div className={`themed-file-card absolute ${isMobile ? "-top-24 right-0" : "-top-20 right-16"} left-0 flex items-start justify-between gap-4 rounded-2xl px-4 py-3`}>
               <div className="min-w-0">
@@ -3855,7 +3934,9 @@ function Chat({
               }
             }}
             disabled={!isGroupChat && (isUserBlocked() || !canMessageDirectUser)}
-            className={`themed-input ${isMobile ? "h-12 px-5 text-base" : "h-[52px] px-6"} rounded-full`}
+            className={`themed-input ${
+              isMobile ? "h-12 px-5 text-base leading-6" : "h-[52px] px-6"
+            } rounded-full`}
           />
 
           {aiEnabled && !isPremiumUser && !isMobile && (
@@ -3872,7 +3953,7 @@ function Chat({
           <button
             type="button"
             onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
-            className={`flex items-center justify-center rounded-full transition ${isMobile ? "h-11 w-11" : "h-12 w-12"} ${
+            className={`flex shrink-0 items-center justify-center rounded-full transition ${isMobile ? "h-11 w-11" : "h-12 w-12"} ${
               isRecordingAudio
                 ? "themed-action-danger"
                 : "themed-composer-button"
@@ -3886,7 +3967,9 @@ function Chat({
             type="button"
             data-testid="chat-send-button"
             onClick={handleSendMessage}
-            className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#22d3ee] text-white shadow-[0_18px_40px_rgba(34,211,238,0.2)] transition hover:scale-[1.02] ${isMobile ? "h-11 w-11 shrink-0" : "h-12 w-12"}`}
+            className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#22d3ee] text-white shadow-[0_18px_40px_rgba(34,211,238,0.2)] transition hover:scale-[1.02] ${
+              isMobile ? "h-11 w-11 shrink-0" : "h-12 w-12"
+            }`}
             disabled={
               isSendingMessage ||
               (!isGroupChat && (isUserBlocked() || !canMessageDirectUser))

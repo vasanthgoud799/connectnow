@@ -238,6 +238,7 @@ function ChatList({ onOpenChat }) {
                       chat={chat}
                       isActive={selectedConversationKey === chat.conversationKey}
                       onOpenChat={() => {
+                        setSelectedConversationKey(chat.conversationKey);
                         setSelectedChatData(
                           isGroup
                             ? {

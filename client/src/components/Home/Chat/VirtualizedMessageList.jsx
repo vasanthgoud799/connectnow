@@ -74,7 +74,7 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
     <VirtualStack
       ref={virtualRef}
       className={`scrollbar-hide flex-1 overflow-x-hidden overflow-y-auto overscroll-none touch-pan-y ${
-        isMobile ? "px-3 py-4" : "px-7 py-8"
+        isMobile ? "px-3 py-3" : "px-7 py-8"
       }`}
       contentClassName={`w-full ${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}
       estimateSize={(row) =>

@@ -352,6 +352,10 @@ function Home({ activeUsers = [], callState }) {
     setActiveSection("chats");
     setSelectedChatData(payload);
     setFocusedMessageId(undefined);
+    if (isMobile) {
+      setForceOpenMobileChat(true);
+      setMobileChatView("chat");
+    }
     setIsGlobalSearchOpen(false);
   };
 

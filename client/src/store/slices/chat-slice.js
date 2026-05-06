@@ -1,3 +1,11 @@
+import {
+  getMessageConversationKey,
+  getMessageId,
+  mergeMessages,
+  normalizeMessage,
+  removeMessage,
+} from "@/utils/chatMessages";
+
 const sortChats = (items = []) =>
   [...items].sort((a, b) => {
     const pinDelta = Number(b.pinnedOrder || 0) - Number(a.pinnedOrder || 0);
@@ -69,9 +77,7 @@ export const createChatSlice = (set, get) => ({
   selectedChatMessages: [],
   setSelectedChatMessages: (selectedChatMessages) =>
     set((state) => {
-      const normalizedMessages = Array.isArray(selectedChatMessages)
-        ? selectedChatMessages
-        : [];
+      const normalizedMessages = mergeMessages([], selectedChatMessages);
       const conversationKey = state.selectedConversationKey;
 
       return {
@@ -86,7 +92,7 @@ export const createChatSlice = (set, get) => ({
     }),
   setConversationMessages: (conversationKey, messages, { loaded = true } = {}) =>
     set((state) => {
-      const normalizedMessages = Array.isArray(messages) ? messages : [];
+      const normalizedMessages = mergeMessages([], messages);
       return {
         messagesByConversationKey: {
           ...state.messagesByConversationKey,
@@ -198,26 +204,21 @@ export const createChatSlice = (set, get) => ({
     })),
   updateMessageStatus: (messageId, statusPayload) =>
     set((state) => ({
-      selectedChatMessages: state.selectedChatMessages.map((message) => {
-        const currentId = String(message._id || message.id);
-        if (currentId !== String(messageId)) return message;
-
-        return {
-          ...message,
-          ...statusPayload,
-        };
-      }),
+      selectedChatMessages: mergeMessages(
+        state.selectedChatMessages,
+        state.selectedChatMessages
+          .filter((message) => getMessageId(message) === String(messageId))
+          .map((message) => ({ ...message, ...statusPayload }))
+      ),
       messagesByConversationKey: updateCachedMessages(
         state.messagesByConversationKey,
         (messages) =>
-          messages.map((message) => {
-            const currentId = String(message._id || message.id);
-            if (currentId !== String(messageId)) return message;
-            return {
-              ...message,
-              ...statusPayload,
-            };
-          })
+          mergeMessages(
+            messages,
+            messages
+              .filter((message) => getMessageId(message) === String(messageId))
+              .map((message) => ({ ...message, ...statusPayload }))
+          )
       ),
       chatSummaries: state.chatSummaries.map((chat) => {
         if (String(chat.lastMessage?.messageId) !== String(messageId)) return chat;
@@ -233,28 +234,17 @@ export const createChatSlice = (set, get) => ({
     })),
   replaceMessage: (nextMessage) =>
     set((state) => {
-      const nextMessageId = String(nextMessage._id || nextMessage.id);
+      const normalizedNextMessage = normalizeMessage(nextMessage);
+      const nextMessageId = getMessageId(normalizedNextMessage);
 
       return {
-        selectedChatMessages: state.selectedChatMessages.map((message) =>
-          String(message._id || message.id) === nextMessageId
-            ? {
-                ...message,
-                ...nextMessage,
-              }
-            : message
+        selectedChatMessages: mergeMessages(
+          state.selectedChatMessages,
+          normalizedNextMessage
         ),
         messagesByConversationKey: updateCachedMessages(
           state.messagesByConversationKey,
-          (messages) =>
-            messages.map((message) =>
-              String(message._id || message.id) === nextMessageId
-                ? {
-                    ...message,
-                    ...nextMessage,
-                  }
-                : message
-            )
+          (messages) => mergeMessages(messages, normalizedNextMessage)
         ),
         chatSummaries: state.chatSummaries.map((chat) =>
           String(chat.lastMessage?.messageId) === nextMessageId
@@ -277,15 +267,10 @@ export const createChatSlice = (set, get) => ({
     }),
   removeMessageById: (messageId) =>
     set((state) => ({
-      selectedChatMessages: state.selectedChatMessages.filter(
-        (message) => String(message._id || message.id) !== String(messageId)
-      ),
+      selectedChatMessages: removeMessage(state.selectedChatMessages, { _id: messageId }),
       messagesByConversationKey: updateCachedMessages(
         state.messagesByConversationKey,
-        (messages) =>
-          messages.filter(
-            (message) => String(message._id || message.id) !== String(messageId)
-          )
+        (messages) => removeMessage(messages, { _id: messageId })
       ),
     })),
   setUnreadCount: (conversationKey, unreadCount) =>
@@ -319,73 +304,46 @@ export const createChatSlice = (set, get) => ({
     })),
   addMessages: (message) => {
     const {
-      selectedChatData,
       selectedConversationKey,
-      selectedChatMessages,
-      messagesByConversationKey,
       messagesLoadedByConversationKey,
       chatSummaries,
       userInfo,
       setUnreadCount,
     } = get();
 
-    const isGroupMessage = message.chatType === "group";
+    const normalizedMessage = normalizeMessage(message);
+    if (!normalizedMessage) return;
+    const isGroupMessage = normalizedMessage.chatType === "group";
     const recipientId =
-      typeof message.recipient === "string"
-        ? message.recipient
-        : message.recipient?._id || message.recipient?.id;
+      typeof normalizedMessage.recipient === "string"
+        ? normalizedMessage.recipient
+        : normalizedMessage.recipient?._id || normalizedMessage.recipient?.id;
     const senderId =
-      typeof message.sender === "string"
-        ? message.sender
-        : message.sender?._id || message.sender?.id;
-    const messageId = message._id || message.id;
-    const conversationKey = message.conversationKey;
-    const selectedChatId = selectedChatData?._id || selectedChatData?.id;
-    const selectedGroupId = selectedChatData?.isGroup ? selectedChatId : null;
-    const incomingGroupId =
-      typeof message.group === "string"
-        ? message.group
-        : message.group?._id || message.group?.id;
-
-    const exists = selectedChatMessages.some(
-      (msg) => String(msg._id || msg.id) === String(messageId)
-    );
-
-    const isActiveConversation = isGroupMessage
-      ? selectedConversationKey === conversationKey ||
-        (selectedGroupId && String(incomingGroupId) === String(selectedGroupId))
-      : recipientId === selectedChatId || senderId === selectedChatId;
-
-    const normalizedMessage = {
-      ...message,
-      recipient: recipientId,
-      sender: senderId,
-      id: messageId,
-    };
-
-    const currentConversationMessages = Array.isArray(messagesByConversationKey?.[conversationKey])
-      ? messagesByConversationKey[conversationKey]
-      : [];
-    const cachedExists = currentConversationMessages.some(
-      (msg) => String(msg._id || msg.id) === String(messageId)
-    );
+      typeof normalizedMessage.sender === "string"
+        ? normalizedMessage.sender
+        : normalizedMessage.sender?._id || normalizedMessage.sender?.id;
+    const messageId = getMessageId(normalizedMessage);
+    const conversationKey = getMessageConversationKey(normalizedMessage);
+    const isActiveConversation = selectedConversationKey === conversationKey;
 
     set((state) => ({
-      selectedChatMessages:
-        !exists && isActiveConversation
-          ? [...selectedChatMessages, normalizedMessage]
-          : state.selectedChatMessages,
+      selectedChatMessages: isActiveConversation
+        ? mergeMessages(state.selectedChatMessages, normalizedMessage)
+        : state.selectedChatMessages,
       messagesByConversationKey:
-        isActiveConversation || messagesLoadedByConversationKey?.[conversationKey]
+        isActiveConversation || state.messagesLoadedByConversationKey?.[conversationKey]
           ? {
               ...state.messagesByConversationKey,
-              [conversationKey]: cachedExists
-                ? currentConversationMessages
-                : [...currentConversationMessages, normalizedMessage],
+              [conversationKey]: mergeMessages(
+                Array.isArray(state.messagesByConversationKey?.[conversationKey])
+                  ? state.messagesByConversationKey[conversationKey]
+                  : [],
+                normalizedMessage
+              ),
             }
           : state.messagesByConversationKey,
       messagesLoadedByConversationKey:
-        isActiveConversation || messagesLoadedByConversationKey?.[conversationKey]
+        isActiveConversation || state.messagesLoadedByConversationKey?.[conversationKey]
           ? {
               ...state.messagesLoadedByConversationKey,
               [conversationKey]: true,
@@ -411,13 +369,13 @@ export const createChatSlice = (set, get) => ({
         ...existingChat,
         lastMessage: {
           messageId,
-          sender: message.sender,
-          content: message.content,
-          messageType: message.messageType,
-          timestamp: message.timestamp,
-          status: message.status,
+          sender: normalizedMessage.sender,
+          content: normalizedMessage.content,
+          messageType: normalizedMessage.messageType,
+          timestamp: normalizedMessage.timestamp,
+          status: normalizedMessage.status,
         },
-        updatedAt: message.timestamp,
+        updatedAt: normalizedMessage.timestamp,
         unreadCount: nextUnreadCount,
       });
 
@@ -426,25 +384,25 @@ export const createChatSlice = (set, get) => ({
       }
     } else {
       const otherParticipant =
-        senderId === userInfo?.id ? message.recipient : message.sender;
+        senderId === userInfo?.id ? normalizedMessage.recipient : normalizedMessage.sender;
 
       get().upsertChatSummary({
         conversationKey,
         chatType: isGroupMessage ? "group" : "direct",
-        group: isGroupMessage ? message.group : undefined,
-        title: isGroupMessage ? message.group?.name : undefined,
-        image: isGroupMessage ? message.group?.image : undefined,
+        group: isGroupMessage ? normalizedMessage.group : undefined,
+        title: isGroupMessage ? normalizedMessage.group?.name : undefined,
+        image: isGroupMessage ? normalizedMessage.group?.image : undefined,
         participant: otherParticipant,
         lastMessage: {
           messageId,
-          sender: message.sender,
-          content: message.content,
-          messageType: message.messageType,
-          timestamp: message.timestamp,
-          status: message.status,
+          sender: normalizedMessage.sender,
+          content: normalizedMessage.content,
+          messageType: normalizedMessage.messageType,
+          timestamp: normalizedMessage.timestamp,
+          status: normalizedMessage.status,
         },
         unreadCount: recipientId === userInfo?.id ? 1 : 0,
-        updatedAt: message.timestamp,
+        updatedAt: normalizedMessage.timestamp,
       });
     }
   },
