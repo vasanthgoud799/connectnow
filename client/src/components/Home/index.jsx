@@ -737,7 +737,7 @@ function Home({ activeUsers = [], callState }) {
       </Suspense>
 
       {!isDirectCallVisible(callState) && (
-        <div className="app-viewport-shell relative flex w-full max-w-full overflow-hidden">
+        <div className="app-viewport-shell absolute inset-0 flex w-full max-w-full overflow-hidden">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <motion.div
               animate={{ x: [0, 60, 0], y: [0, -40, 0] }}
@@ -878,9 +878,9 @@ function Home({ activeUsers = [], callState }) {
                           animate={{ x: 0, opacity: 1 }}
                           exit={{ x: 48, opacity: 0 }}
                           transition={{ duration: 0.24 }}
-                          className="relative flex min-h-0 w-full max-w-full flex-1 overflow-hidden"
+                          className="relative flex h-full min-h-0 w-full max-w-full flex-1 overflow-hidden"
                         >
-                        <div className="themed-main-panel themed-chat-canvas relative min-h-0 flex-1 overflow-hidden">
+                        <div className="themed-main-panel themed-chat-canvas relative flex h-full min-h-0 flex-1 overflow-hidden">
                           <Suspense fallback={<RouteLoader message="Loading chat..." />}>
                             <Chat
                               isMobile
@@ -931,9 +931,9 @@ function Home({ activeUsers = [], callState }) {
                         initial={{ opacity: 0, y: 18 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.08 }}
-                        className="flex min-w-0 flex-1"
+                        className="flex h-full min-w-0 flex-1"
                       >
-                        <div className="themed-main-panel themed-chat-canvas relative min-h-0 flex-1">
+                        <div className="themed-main-panel themed-chat-canvas relative flex h-full min-h-0 flex-1">
                           <Suspense fallback={<RouteLoader message="Loading chat..." />}>
                             <Chat onToggleDetail={toggleDetail} onToggleSearch={toggleSearch} />
                           </Suspense>
@@ -1004,7 +1004,7 @@ function Home({ activeUsers = [], callState }) {
               </div>
 
               <div
-                className={`grid h-[calc(74px+env(safe-area-inset-bottom))] grid-cols-5 border-t border-white/8 bg-[#060a14]/95 pb-[env(safe-area-inset-bottom)] md:hidden ${
+                className={`themed-bottom-nav grid h-[calc(68px+env(safe-area-inset-bottom))] grid-cols-5 pb-[env(safe-area-inset-bottom)] md:hidden ${
                   activeSection === "chats" && mobileChatView === "chat" ? "hidden" : ""
                 }`}
               >

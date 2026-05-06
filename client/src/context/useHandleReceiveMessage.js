@@ -4,7 +4,7 @@ import {
   decryptIncomingMessage,
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
-import { normalizeMessage } from "@/utils/chatMessages";
+import { areSameMessage, normalizeMessage } from "@/utils/chatMessages";
 import {
   dispatchOpenChatFromNotification,
   showBrowserNotification,
@@ -82,8 +82,22 @@ const useHandleReceiveMessage = (socket) => {
         currentUserId: useAppStore.getState().userInfo?.id,
       })
         .then((nextMessage) => {
-          addMessages(nextMessage);
           const currentState = useAppStore.getState();
+          const conversationMessages = Array.isArray(
+            currentState.messagesByConversationKey?.[nextMessage?.conversationKey]
+          )
+            ? currentState.messagesByConversationKey[nextMessage.conversationKey]
+            : [];
+          const duplicateExists = conversationMessages.some((item) =>
+            areSameMessage(item, nextMessage)
+          );
+
+          if (duplicateExists) {
+            replaceMessage(nextMessage);
+          } else {
+            addMessages(nextMessage);
+          }
+
           const isCurrentConversationVisible =
             document.visibilityState === "visible" &&
             currentState.activeHomeSection === "chats" &&

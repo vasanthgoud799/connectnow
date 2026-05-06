@@ -80,7 +80,6 @@ import {
   mergeMessages,
   normalizeMessage,
   removeMessage,
-  sortMessagesChronologically,
 } from "@/utils/chatMessages";
 
 const EmojiPicker = lazy(() => import("emoji-picker-react"));
@@ -2556,13 +2555,16 @@ function Chat({
         }),
         { payloadType: "poll" }
       );
+      const pollRequestId =
+        globalThis.crypto?.randomUUID?.() ||
+        `poll-${Date.now()}-${Math.random()}`;
 
       socket.emit(
         "send_message",
         {
-          clientMessageId:
-            globalThis.crypto?.randomUUID?.() ||
-            `poll-${Date.now()}-${Math.random()}`,
+          clientMessageId: pollRequestId,
+          clientTempId: pollRequestId,
+          requestId: pollRequestId,
           recipient: isGroupChat ? undefined : selectedChatData._id,
           groupId: isGroupChat ? selectedChatData._id : undefined,
           content: "Encrypted poll",
@@ -2632,6 +2634,7 @@ function Chat({
 
     let optimisticMessageId = null;
     let clientMessageId = null;
+    let requestId = null;
     let shouldRetryAfterKeyInit = false;
     let retryConversationKey = resolvedConversationKey;
 
@@ -2641,6 +2644,7 @@ function Chat({
       clientMessageId =
         globalThis.crypto?.randomUUID?.() ||
         `msg-${Date.now()}-${Math.random()}`;
+      requestId = clientMessageId;
 
       if (editingMessageId) {
         const encryptedEditPayload = await buildEncryptedPayload(text.trim());
@@ -2684,6 +2688,8 @@ function Chat({
         _id: optimisticMessageId,
         id: optimisticMessageId,
         clientMessageId,
+        clientTempId: clientMessageId,
+        requestId,
         conversationKey: activeConversationKey,
         sender: {
           _id: userInfo?.id,
@@ -2771,6 +2777,8 @@ function Chat({
         "send_message",
         {
           clientMessageId,
+          clientTempId: clientMessageId,
+          requestId,
           recipient: isGroupChat ? undefined : selectedChatId,
           groupId: isGroupChat ? selectedChatId : undefined,
           content:
@@ -2806,6 +2814,8 @@ function Chat({
             mergeConversationMessageSet(activeConversationKey, {
               ...ack.message,
               clientMessageId,
+              clientTempId: clientMessageId,
+              requestId,
               conversationKey:
                 ack.message.conversationKey || activeConversationKey,
               status: ack.message.status || "sent",
@@ -2867,15 +2877,15 @@ function Chat({
         toast.error(error.message || "Unable to send encrypted message.");
       }
     } finally {
-      setIsSendingMessage(false);
-      sendingMessageRef.current = false;
-    }
+        setIsSendingMessage(false);
+        sendingMessageRef.current = false;
+      }
 
-    if (shouldRetryAfterKeyInit) {
-      queueMicrotask(() => {
-        handleSendMessage();
-      });
-    }
+      if (shouldRetryAfterKeyInit) {
+        queueMicrotask(() => {
+          handleSendMessage();
+        });
+      }
   };
 
   const formatRecordingTime = (seconds) => {
@@ -3001,9 +3011,12 @@ function Chat({
       : [];
 
     if (!resolvedConversationKey) return [];
-    return sortMessagesChronologically(
+    return mergeMessages(
+      [],
       messages
-        .map((message) => normalizeMessage(message, { conversationKey: resolvedConversationKey }))
+        .map((message) =>
+          normalizeMessage(message, { conversationKey: resolvedConversationKey })
+        )
         .filter(
           (message) => message && message.conversationKey === resolvedConversationKey
         )
@@ -4095,6 +4108,9 @@ function Chat({
               if (e.key === "Enter") {
                 e.preventDefault();
                 stopTypingNow();
+                if (isSendingMessage || sendingMessageRef.current) {
+                  return;
+                }
                 handleSendMessage();
               }
             }}
@@ -4140,6 +4156,7 @@ function Chat({
             }`}
             disabled={
               isSendingMessage ||
+              sendingMessageRef.current ||
               (!isGroupChat && (isUserBlocked() || !canMessageDirectUser))
             }
           >
@@ -4169,11 +4186,14 @@ function Chat({
           if (!socket || !forwardingMessage) return;
 
           const payload = await buildForwardPayload(forwardingMessage, chat);
+          const forwardId =
+            globalThis.crypto?.randomUUID?.() ||
+            `forward-${Date.now()}-${Math.random()}`;
           socket.emit("send_message", {
             ...payload,
-            clientMessageId:
-              globalThis.crypto?.randomUUID?.() ||
-              `forward-${Date.now()}-${Math.random()}`,
+            clientMessageId: forwardId,
+            clientTempId: forwardId,
+            requestId: forwardId,
           }, (ack) => {
             if (!ack?.ok) {
               toast.error(ack?.error || "Failed to forward message.");

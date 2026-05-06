@@ -5,7 +5,12 @@ export const getMessageId = (message) =>
   toStringId(message?._id || message?.id);
 
 export const getMessageClientId = (message) =>
-  toStringId(message?.clientMessageId);
+  toStringId(
+    message?.clientMessageId ||
+      message?.clientTempId ||
+      message?.requestId ||
+      message?.messageRequestId
+  );
 
 export const getMessageConversationKey = (message) =>
   toStringId(message?.conversationKey);
@@ -31,6 +36,8 @@ export const normalizeMessage = (message, { conversationKey } = {}) => {
     _id: normalizedId || message._id,
     id: normalizedId || message.id || normalizedClientMessageId,
     clientMessageId: normalizedClientMessageId || null,
+    clientTempId: toStringId(message?.clientTempId || normalizedClientMessageId || null) || null,
+    requestId: toStringId(message?.requestId || normalizedClientMessageId || null) || null,
     conversationKey: normalizedConversationKey || undefined,
     timestamp: normalizedTimestampValue,
     createdAt: message.createdAt || normalizedTimestampValue,

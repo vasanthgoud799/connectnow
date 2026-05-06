@@ -609,7 +609,11 @@ const setupSocket = async (server) => {
       const recipientId = payload?.recipient;
       const groupId = payload?.groupId;
       const clientMessageId = String(
-        payload?.clientMessageId || payload?.messageId || ""
+        payload?.clientMessageId ||
+          payload?.clientTempId ||
+          payload?.requestId ||
+          payload?.messageId ||
+          ""
       ).trim();
 
       if (!senderId || (!recipientId && !groupId)) {
@@ -668,6 +672,15 @@ const setupSocket = async (server) => {
         .populate("group", "name description image members");
       await hydrateMessageMediaForUser({ message: populatedMessage });
 
+      const serializedMessage = populatedMessage?.toObject
+        ? populatedMessage.toObject()
+        : { ...populatedMessage };
+      const enrichedMessage = {
+        ...serializedMessage,
+        clientMessageId: clientMessageId || null,
+        clientTempId: clientMessageId || null,
+        requestId: clientMessageId || null,
+      };
       const normalizedConversationKey = populatedMessage.conversationKey;
 
       if (groupId) {
@@ -683,8 +696,8 @@ const setupSocket = async (server) => {
 
         group.members.forEach((member) => {
           const memberId = String(member.user?._id || member.user);
-          io.to(getUserRoom(memberId)).emit("receive_message", populatedMessage);
-          io.to(getUserRoom(memberId)).emit("receiveMessage", populatedMessage);
+          io.to(getUserRoom(memberId)).emit("receive_message", enrichedMessage);
+          io.to(getUserRoom(memberId)).emit("receiveMessage", enrichedMessage);
         });
 
         await notifyGroupMessage({
@@ -695,16 +708,16 @@ const setupSocket = async (server) => {
 
         callback?.({
           ok: true,
-          message: populatedMessage,
+          message: enrichedMessage,
           clientMessageId: clientMessageId || null,
         });
         return;
       }
 
-      io.to(getUserRoom(senderId)).emit("receive_message", populatedMessage);
-      io.to(getUserRoom(senderId)).emit("receiveMessage", populatedMessage);
-      io.to(getUserRoom(recipientId)).emit("receive_message", populatedMessage);
-      io.to(getUserRoom(recipientId)).emit("receiveMessage", populatedMessage);
+      io.to(getUserRoom(senderId)).emit("receive_message", enrichedMessage);
+      io.to(getUserRoom(senderId)).emit("receiveMessage", enrichedMessage);
+      io.to(getUserRoom(recipientId)).emit("receive_message", enrichedMessage);
+      io.to(getUserRoom(recipientId)).emit("receiveMessage", enrichedMessage);
 
       const deliveryKey = `${String(populatedMessage._id)}:${String(recipientId)}`;
       if (isUserOnline(recipientId)) {
@@ -750,7 +763,7 @@ const setupSocket = async (server) => {
 
       callback?.({
         ok: true,
-        message: populatedMessage,
+        message: enrichedMessage,
         clientMessageId: clientMessageId || null,
       });
     } catch (error) {
