@@ -758,7 +758,7 @@ function Home({ activeUsers = [], callState }) {
                                 animate={{ x: 0, opacity: 1 }}
                                 exit={{ x: 36, opacity: 0 }}
                                 transition={{ duration: 0.2 }}
-                                className="themed-main-panel absolute inset-0 z-30 overflow-hidden"
+                                className="absolute inset-0 z-30 overflow-hidden bg-[#08111f]"
                               >
                                 {isDetailVisible && (
                                   <Suspense fallback={<RouteLoader message="Loading chat details..." />}>
@@ -807,7 +807,7 @@ function Home({ activeUsers = [], callState }) {
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: 60, opacity: 0 }}
                           transition={{ duration: 0.28 }}
-                          className="themed-main-panel hidden w-[24rem] border-l xl:block"
+                          className="hidden w-[24rem] border-l border-white/8 bg-[#08111f] xl:block"
                         >
                             {isDetailVisible && (
                               <Suspense fallback={<RouteLoader message="Loading chat details..." />}>

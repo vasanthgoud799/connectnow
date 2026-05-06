@@ -100,12 +100,13 @@ function Search({ onClose }) {
   };
 
   return (
-    <div className="themed-panel flex h-full flex-col">
-      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-5">
+    <div className="flex h-full flex-col bg-[#08111f]">
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/10 bg-[#08111f] px-4 py-4">
         <button
           type="button"
           className="themed-panel-soft inline-flex h-10 w-10 items-center justify-center rounded-2xl"
           onClick={onClose}
+          aria-label="Close search"
         >
           <X className="themed-title h-[18px] w-[18px]" />
         </button>

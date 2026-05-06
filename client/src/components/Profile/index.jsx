@@ -34,6 +34,10 @@ function Profile() {
   const normalizedFirstName = firstName.trim();
   const normalizedLastName = lastName.trim();
   const normalizedAbout = about.trim();
+  const resolvedExistingFirstName = String(userInfo?.firstName || "").trim();
+  const resolvedExistingLastName = String(userInfo?.lastName || "").trim();
+  const resolvedFirstName = normalizedFirstName || resolvedExistingFirstName;
+  const resolvedLastName = normalizedLastName || resolvedExistingLastName;
 
   useEffect(() => {
     setFirstName(userInfo?.firstName || "");
@@ -78,14 +82,16 @@ function Profile() {
   }, [userInfo]);
 
   const validateProfile = () => {
-    const nextFirstName = normalizedFirstName || userInfo?.firstName?.trim() || "";
-    const nextLastName = normalizedLastName || userInfo?.lastName?.trim() || "";
+    if (!userInfo?.id) {
+      toast.error("Profile is still loading. Please try again in a moment.");
+      return false;
+    }
 
-    if (!nextFirstName) {
+    if (!resolvedFirstName) {
       toast.error("First Name is required.");
       return false;
     }
-    if (!nextLastName) {
+    if (!resolvedLastName) {
       toast.error("Last Name is required.");
       return false;
     }
@@ -128,13 +134,11 @@ function Profile() {
           : String(image || "").startsWith("data:")
             ? ""
             : image;
-        const nextFirstName = normalizedFirstName || userInfo?.firstName?.trim() || "";
-        const nextLastName = normalizedLastName || userInfo?.lastName?.trim() || "";
         const response = await apiClient.post(
           UPDATE_PROFILE_ROUTE,
           {
-            firstName: nextFirstName,
-            lastName: nextLastName,
+            firstName: resolvedFirstName,
+            lastName: resolvedLastName,
             image: persistedImage,
             imageUpload,
             about: normalizedAbout,
@@ -147,7 +151,6 @@ function Profile() {
           setUserInfo({ ...response.data });
           toast.success("Profile updated successfully");
           navigate("/home");
-          window.location.reload();
         }
       } catch (error) {
         console.error(

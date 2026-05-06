@@ -71,7 +71,6 @@ import {
   encryptMediaFileForConversation,
   encryptTextForConversation,
   fetchConversationPublicKeys,
-  formatFingerprintForDisplay,
   hydrateMessagesFromCache,
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
@@ -3227,46 +3226,6 @@ function Chat({
                   ? "Online"
                   : "Offline"}
             </p>
-            {!isGroupChat && (
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span
-                  data-testid="chat-trust-status-badge"
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                    contactTrustState?.status === "verified"
-                      ? "bg-emerald-400/12 text-emerald-200"
-                      : contactTrustState?.status === "changed"
-                        ? "bg-rose-400/12 text-rose-200"
-                        : "bg-white/8 text-slate-300"
-                  }`}
-                >
-                  {contactTrustState?.status === "verified" ? (
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                  ) : contactTrustState?.status === "changed" ? (
-                    <ShieldAlert className="h-3.5 w-3.5" />
-                  ) : (
-                    <ShieldQuestion className="h-3.5 w-3.5" />
-                  )}
-                  {loadingContactTrustState
-                    ? "Checking security"
-                    : contactTrustState?.status === "verified"
-                      ? "Security verified"
-                      : contactTrustState?.status === "changed"
-                        ? "Security key changed"
-                        : "Security not verified"}
-                </span>
-                <span
-                  data-testid="chat-trust-fingerprint"
-                  className="truncate text-[11px] text-slate-400"
-                >
-                  {formatFingerprintForDisplay(contactTrustState?.fingerprint)}
-                </span>
-              </div>
-            )}
-            {!isGroupChat && (
-              <p className="mt-1 text-[11px] text-slate-400">
-                Verify key helps confirm that your chat and calls are secure with this contact.
-              </p>
-            )}
             {!isMobile && !isGroupChat && selectedBirthdayReminder && (
               <button
                 type="button"
@@ -3303,9 +3262,11 @@ function Chat({
               }
               title="Manage contact security verification"
             >
-              {contactTrustState?.status === "verified"
-                ? "Verified secure chat"
-                : "Verify security"}
+              {loadingContactTrustState
+                ? "Checking..."
+                : contactTrustState?.status === "verified"
+                  ? "Verified"
+                  : "Verify"}
             </button>
           )}
           <button

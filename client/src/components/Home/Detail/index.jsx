@@ -896,18 +896,19 @@ function Detail({ onClose, activeUsers = [], callState }) {
   );
 
   return (
-    <div className="themed-panel flex h-full flex-col">
-      <div className="flex items-center border-b border-white/10 px-4 py-5">
-        <span className="themed-title flex-1 font-['Space_Grotesk'] text-xl font-semibold">
-          {isGroupChat ? "Group Info" : "Contact Info"}
-        </span>
+    <div className="flex h-full flex-col bg-[#08111f]">
+      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/10 bg-[#08111f] px-4 py-4">
         <button
           type="button"
           onClick={onClose}
-          className="themed-panel-soft rounded-full p-2 transition hover:opacity-90"
+          className="themed-panel-soft inline-flex h-10 w-10 items-center justify-center rounded-2xl transition hover:opacity-90"
+          aria-label="Close contact info"
         >
           <X className="themed-title h-4 w-4" />
         </button>
+        <span className="themed-title flex-1 font-['Space_Grotesk'] text-xl font-semibold">
+          {isGroupChat ? "Group Info" : "Contact Info"}
+        </span>
       </div>
 
       <div className="space-y-6 overflow-y-auto p-5 no-scrollbar">
