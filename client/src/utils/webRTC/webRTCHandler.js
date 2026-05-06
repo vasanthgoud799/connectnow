@@ -609,12 +609,16 @@ const createPeerConnection = ({ createOutboundDataChannel = false } = {}) => {
     peerConnection.addTrack(track, localStream);
   });
 
-  peerConnection.ontrack = ({ track }) => {
+  peerConnection.ontrack = ({ track, streams = [] }) => {
     if (!track) return;
 
     observeTrackLifecycle(track, "remote");
 
-    if (
+    const incomingStream = streams[0] || null;
+
+    if (incomingStream instanceof MediaStream) {
+      callContext.remoteMediaStream = incomingStream;
+    } else if (
       !callContext.remoteMediaStream
         .getTracks()
         .some((existingTrack) => existingTrack.id === track.id)
@@ -635,7 +639,9 @@ const createPeerConnection = ({ createOutboundDataChannel = false } = {}) => {
       statusMessage:
         track.kind === "video" ? "Video connected" : "Audio connected",
     });
-    store.dispatch(setRemoteStream(callContext.remoteMediaStream));
+    store.dispatch(
+      setRemoteStream(new MediaStream(callContext.remoteMediaStream.getTracks()))
+    );
   };
 
   peerConnection.ondatachannel = (event) => {

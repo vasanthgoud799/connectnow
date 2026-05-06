@@ -3165,7 +3165,7 @@ function Chat({
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       <div
-        className={`flex items-center justify-between border-b border-white/8 backdrop-blur-xl ${
+        className={`relative z-40 flex items-center justify-between border-b border-white/8 backdrop-blur-xl ${
           isMobile ? "h-[74px] px-3" : "h-[88px] px-7"
         }`}
       >
@@ -3341,7 +3341,7 @@ function Chat({
             </>
           )}
           {isMobile && (
-            <div className="relative">
+            <div className="relative z-50">
               <button
                 type="button"
                 className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
@@ -3353,10 +3353,10 @@ function Chat({
                 <>
                   <button
                     type="button"
-                    className="fixed inset-0 z-10 cursor-default"
+                    className="fixed inset-0 z-[90] cursor-default"
                     onClick={() => setShowMobileHeaderMenu(false)}
                   />
-                  <div className="themed-modal-surface absolute right-0 top-12 z-20 w-56 rounded-[18px] border border-white/10 p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]">
+                  <div className="themed-modal-surface absolute right-0 top-12 z-[100] w-56 rounded-[18px] border border-white/10 p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]">
                     <button
                       type="button"
                       className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"

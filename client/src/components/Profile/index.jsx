@@ -109,12 +109,17 @@ function Profile() {
     if (validateProfile()) {
       try {
         const imageUpload = imageFile ? await uploadProfileImage(imageFile) : null;
+        const persistedImage = imageFile
+          ? ""
+          : String(image || "").startsWith("data:")
+            ? ""
+            : image;
         const response = await apiClient.post(
           UPDATE_PROFILE_ROUTE,
           {
             firstName: normalizedFirstName,
             lastName: normalizedLastName,
-            image,
+            image: persistedImage,
             imageUpload,
             about: normalizedAbout,
             birthday,
