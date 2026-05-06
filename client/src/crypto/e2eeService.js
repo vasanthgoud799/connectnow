@@ -1069,22 +1069,28 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   const cachedMessage = cacheKey ? messageDecryptCache.get(cacheKey) : null;
 
   if (cachedMessage) {
-    return {
-      ...message,
-      ...cachedMessage,
-    };
+    if (cachedMessage.decryptionError) {
+      messageDecryptCache.delete(cacheKey);
+    } else {
+      return {
+        ...message,
+        ...cachedMessage,
+      };
+    }
   }
 
   if (cacheKey) {
     try {
       const persistedMessage = await getStoredDecryptedMessage(cacheKey);
       if (persistedMessage) {
-        messageDecryptCache.set(cacheKey, persistedMessage);
-        trimMessageDecryptCache();
-        return {
-          ...message,
-          ...persistedMessage,
-        };
+        if (!persistedMessage.decryptionError) {
+          messageDecryptCache.set(cacheKey, persistedMessage);
+          trimMessageDecryptCache();
+          return {
+            ...message,
+            ...persistedMessage,
+          };
+        }
       }
     } catch {
       // Ignore cache read failures and fall back to live decryption.
@@ -1174,7 +1180,7 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   try {
     const resolvedMessage = await decryptPromise;
 
-    if (cacheKey) {
+    if (cacheKey && !resolvedMessage.decryptionError) {
       messageDecryptCache.set(cacheKey, resolvedMessage);
       trimMessageDecryptCache();
       void setStoredDecryptedMessage(cacheKey, resolvedMessage);
@@ -1230,6 +1236,10 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
           (cacheKey ? persistedEntries[cacheKey] : null);
 
         if (cachedValue) {
+          if (cachedValue.decryptionError) {
+            return { type: "fallback", message };
+          }
+
           if (cacheKey && !messageDecryptCache.has(cacheKey)) {
             messageDecryptCache.set(cacheKey, cachedValue);
             trimMessageDecryptCache();
@@ -1379,7 +1389,7 @@ export const hydrateMessagesFromCache = async ({ messages }) => {
       (cacheKey && messageDecryptCache.get(cacheKey)) ||
       (cacheKey ? persistedEntries[cacheKey] : null);
 
-    if (!cachedValue) return message;
+    if (!cachedValue || cachedValue.decryptionError) return message;
 
     if (cacheKey && !messageDecryptCache.has(cacheKey)) {
       messageDecryptCache.set(cacheKey, cachedValue);

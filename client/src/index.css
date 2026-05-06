@@ -635,6 +635,17 @@
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
+@media (max-width: 768px) {
+  .chat-composer-shell {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
 .themed-bottom-nav {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(6, 10, 20, 0.95);

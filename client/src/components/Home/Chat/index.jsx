@@ -2810,12 +2810,29 @@ function Chat({
             toast.error(ack?.error || "Failed to send message.");
             return;
           }
-          if (optimisticMessageId && ack?.message) {
+      if (optimisticMessageId && ack?.message) {
+            const resolvedDisplayContent =
+              pendingText ||
+              (messageType === "image"
+                ? "Image"
+                : messageType === "video"
+                  ? "Video"
+                  : messageType === "audio"
+                    ? "Audio"
+                    : messageType === "document"
+                      ? "Document"
+                      : optimisticContent);
             mergeConversationMessageSet(activeConversationKey, {
               ...ack.message,
               clientMessageId,
               clientTempId: clientMessageId,
               requestId,
+              content:
+                ack.message.content ||
+                (ack.message.encryption?.enabled ? resolvedDisplayContent : ""),
+              decryptedContent:
+                ack.message.decryptedContent ||
+                (ack.message.encryption?.enabled ? resolvedDisplayContent : pendingText || ""),
               conversationKey:
                 ack.message.conversationKey || activeConversationKey,
               status: ack.message.status || "sent",
@@ -3325,6 +3342,16 @@ function Chat({
       Boolean(message?.encryption?.enabled) &&
       !message?.decryptionError &&
       !String(message?.decryptedContent || message?.content || "").trim();
+    const fallbackLabel =
+      message.messageType === "audio"
+        ? "Audio unavailable"
+        : message.messageType === "video"
+          ? "Video unavailable"
+          : message.messageType === "image"
+            ? "Image unavailable"
+            : message.messageType === "document"
+              ? "Document unavailable"
+              : "Message unavailable";
 
     if (message.messageType === "system") {
       return (
@@ -3335,6 +3362,8 @@ function Chat({
     }
 
     if (message.messageType === "text") {
+      const displayText =
+        String(message.decryptedContent || message.content || "").trim();
       if (isAwaitingDecryption) {
         return (
           <div className="space-y-2">
@@ -3344,9 +3373,17 @@ function Chat({
         );
       }
 
+      if (!displayText) {
+        return (
+          <p className="text-sm italic text-slate-300/90">
+            Message unavailable
+          </p>
+        );
+      }
+
       return (
         <p className="whitespace-pre-wrap break-words text-[15px]">
-          {renderTextWithMentions(message.content)}
+          {renderTextWithMentions(displayText)}
         </p>
       );
     }
@@ -3361,7 +3398,18 @@ function Chat({
       );
     }
 
-    if (!message.fileUrl) return null;
+    if (!message.fileUrl) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm italic text-slate-300/90">{fallbackLabel}</p>
+          {attachmentCaption ? (
+            <p className="whitespace-pre-wrap break-words text-sm leading-6">
+              {renderTextWithMentions(attachmentCaption)}
+            </p>
+          ) : null}
+        </div>
+      );
+    }
 
     if (message.mediaEncryption?.enabled) {
       return (
