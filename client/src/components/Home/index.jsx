@@ -36,6 +36,7 @@ import {
 import { registerNewUser } from "@/utils/wssConnection/wssConnection";
 import { useSocket } from "@/context/SocketContext";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
+import { useVisualViewportHeight } from "@/hooks/useVisualViewportHeight";
 import RouteLoader from "@/components/ui/RouteLoader";
 import {
   getFocusCallFromNotificationEventName,
@@ -74,6 +75,7 @@ function Home({ activeUsers = [], callState }) {
   const navigate = useNavigate();
   const socket = useSocket();
   const { isMobile } = useResponsiveLayout();
+  useVisualViewportHeight();
 
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -268,6 +270,56 @@ function Home({ activeUsers = [], callState }) {
       setIsSearchVisible(false);
     };
 
+    const openConversationByKey = (conversationKey, messageId) => {
+      const matchingChat = chatSummaries.find(
+        (chat) => chat.conversationKey === conversationKey
+      );
+      if (!matchingChat) return false;
+
+      setActiveSection("chats");
+      setSelectedChatData(
+        matchingChat.chatType === "group"
+          ? {
+              _id: matchingChat.group?._id,
+              id: matchingChat.group?._id,
+              name: matchingChat.group?.name,
+              description: matchingChat.group?.description,
+              image: matchingChat.group?.image,
+              members: matchingChat.group?.members,
+              memberCount:
+                matchingChat.group?.memberCount ||
+                matchingChat.group?.members?.length ||
+                0,
+              inviteToken: matchingChat.group?.inviteToken,
+              isGroup: true,
+              conversationKey: matchingChat.conversationKey,
+            }
+          : matchingChat.participant
+      );
+      setFocusedMessageId(messageId || undefined);
+      if (isMobile) {
+        setForceOpenMobileChat(true);
+        setMobileChatView("chat");
+      }
+      setIsGlobalSearchOpen(false);
+      setIsNotificationsOpen(false);
+      setIsDetailVisible(false);
+      setIsSearchVisible(false);
+      return true;
+    };
+
+    const handleServiceWorkerNotificationClick = (event) => {
+      if (event?.data?.type !== "CONNECTNOW_NOTIFICATION_CLICK") return;
+      const data = event.data.data || {};
+      if (data.notificationKind === "call") {
+        handleFocusCall();
+        return;
+      }
+      if (data.conversationKey) {
+        openConversationByKey(data.conversationKey, data.messageId);
+      }
+    };
+
     const handleFocusCall = () => {
       setActiveSection("chats");
       if (isMobile) {
@@ -286,6 +338,24 @@ function Home({ activeUsers = [], callState }) {
       getFocusCallFromNotificationEventName(),
       handleFocusCall
     );
+    navigator.serviceWorker?.addEventListener?.(
+      "message",
+      handleServiceWorkerNotificationClick
+    );
+
+    const notificationConversation = new URLSearchParams(window.location.search).get(
+      "conversation"
+    );
+    const notificationMessage = new URLSearchParams(window.location.search).get("message");
+    const notificationFocus = new URLSearchParams(window.location.search).get("focus");
+    if (notificationFocus === "call") {
+      handleFocusCall();
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (notificationConversation) {
+      if (openConversationByKey(notificationConversation, notificationMessage)) {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    }
 
     return () => {
       window.removeEventListener(
@@ -296,8 +366,12 @@ function Home({ activeUsers = [], callState }) {
         getFocusCallFromNotificationEventName(),
         handleFocusCall
       );
+      navigator.serviceWorker?.removeEventListener?.(
+        "message",
+        handleServiceWorkerNotificationClick
+      );
     };
-  }, [isMobile, setFocusedMessageId, setSelectedChatData]);
+  }, [chatSummaries, isMobile, setFocusedMessageId, setSelectedChatData]);
 
   useEffect(() => {
     if (!userInfo.profileSetUp) {
@@ -645,7 +719,7 @@ function Home({ activeUsers = [], callState }) {
   };
 
   return (
-    <div className="themed-shell mobile-app-shell relative h-[100dvh] min-h-[100dvh] w-full overflow-hidden">
+    <div className="themed-shell mobile-app-shell relative w-full overflow-hidden">
       {isLoggingOut && (
         <div className="absolute inset-0 z-[140] flex items-center justify-center bg-[#07111f]/95 px-6 text-white">
           <div className="glass-panel rounded-[28px] px-8 py-6 text-center">
@@ -663,7 +737,7 @@ function Home({ activeUsers = [], callState }) {
       </Suspense>
 
       {!isDirectCallVisible(callState) && (
-        <div className="relative flex h-[100dvh] w-full max-w-full overflow-hidden">
+        <div className="app-viewport-shell relative flex w-full max-w-full overflow-hidden">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <motion.div
               animate={{ x: [0, 60, 0], y: [0, -40, 0] }}

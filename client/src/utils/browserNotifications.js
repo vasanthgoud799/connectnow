@@ -1,12 +1,18 @@
 const BROWSER_NOTIFICATIONS_STORAGE_KEY = "connectnow.browserNotificationsEnabled";
 const CONNECTNOW_OPEN_CHAT_EVENT = "connectnow:open-chat-from-notification";
 const CONNECTNOW_FOCUS_CALL_EVENT = "connectnow:focus-call-from-notification";
+const recentNotificationTags = new Map();
 
 export const getBrowserNotificationStorageKey = () =>
   BROWSER_NOTIFICATIONS_STORAGE_KEY;
 
 export const isBrowserNotificationSupported = () =>
   typeof window !== "undefined" && "Notification" in window;
+
+export const getBrowserNotificationPermission = () => {
+  if (!isBrowserNotificationSupported()) return "unsupported";
+  return window.Notification.permission;
+};
 
 export const getStoredBrowserNotificationsEnabled = () => {
   if (typeof window === "undefined") return false;
@@ -54,28 +60,66 @@ export const showBrowserNotification = ({
     return null;
   }
 
-  const notification = new Notification(title, {
+  const normalizedTag = tag || `connectnow:${Date.now()}`;
+  const lastShownAt = recentNotificationTags.get(normalizedTag) || 0;
+  if (Date.now() - lastShownAt < 1500) {
+    return null;
+  }
+  recentNotificationTags.set(normalizedTag, Date.now());
+
+  const options = {
     body,
-    tag,
-    data,
+    tag: normalizedTag,
+    data: {
+      ...(data || {}),
+      notificationKind: data?.notificationKind || "message",
+    },
     icon: "/pwa-icon.svg",
     badge: "/pwa-icon.svg",
     renotify: false,
     silent: true,
-  });
-
-  notification.onclick = (event) => {
-    event?.preventDefault?.();
-    try {
-      window.focus?.();
-    } catch {
-      // Ignore focus failures.
-    }
-    notification.close();
-    onClick?.();
   };
 
-  return notification;
+  const showWithWindowNotification = () => {
+    const notification = new Notification(title, options);
+
+    notification.onclick = (event) => {
+      event?.preventDefault?.();
+      try {
+        window.focus?.();
+      } catch {
+        // Ignore focus failures.
+      }
+      notification.close();
+      onClick?.();
+    };
+
+    return notification;
+  };
+
+  if (navigator.serviceWorker?.ready) {
+    navigator.serviceWorker.ready
+      .then((registration) =>
+        registration.showNotification(title, options).catch(() => {
+          showWithWindowNotification();
+        })
+      )
+      .catch(() => {
+        showWithWindowNotification();
+      });
+    return { tag: normalizedTag };
+  }
+
+  return showWithWindowNotification();
+};
+
+export const showInAppNotificationFallback = ({ title, body }) => {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("connectnow:in-app-notification", {
+      detail: { title, body },
+    })
+  );
 };
 
 export const dispatchOpenChatFromNotification = (detail) => {

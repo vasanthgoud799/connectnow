@@ -54,3 +54,38 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const data = event.notification?.data || {};
+  const targetUrl = new URL("/", self.location.origin);
+  if (data.conversationKey) {
+    targetUrl.searchParams.set("conversation", data.conversationKey);
+  }
+  if (data.messageId) {
+    targetUrl.searchParams.set("message", data.messageId);
+  }
+  if (data.notificationKind === "call") {
+    targetUrl.searchParams.set("focus", "call");
+  }
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existingClient = clients.find((client) => "focus" in client);
+      if (existingClient) {
+        existingClient.postMessage({
+          type: "CONNECTNOW_NOTIFICATION_CLICK",
+          data,
+        });
+        return existingClient.focus();
+      }
+
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl.href);
+      }
+
+      return undefined;
+    })
+  );
+});

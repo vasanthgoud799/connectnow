@@ -828,6 +828,81 @@ const setupSocket = async (server) => {
     }
   };
 
+  const getTypingProfile = async (userId) => {
+    const cachedProfile = callProfilesMap.get(String(userId));
+    if (cachedProfile) {
+      return {
+        name:
+          cachedProfile.displayName ||
+          cachedProfile.username ||
+          cachedProfile.email ||
+          "Someone",
+        image: cachedProfile.image || null,
+      };
+    }
+
+    const user = await User.findById(userId)
+      .select("firstName lastName email image")
+      .lean()
+      .catch(() => null);
+    return {
+      name:
+        [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+        user?.email ||
+        "Someone",
+      image: user?.image || null,
+    };
+  };
+
+  const emitTypingUpdate = async ({ socket, payload, isTyping }) => {
+    const senderId = String(socket.data.userId || "");
+    if (!senderId) return;
+
+    const chatType = payload?.chatType === "group" ? "group" : "direct";
+    const recipientId = payload?.recipientId ? String(payload.recipientId) : "";
+    const groupId = payload?.groupId ? String(payload.groupId) : "";
+    const conversationKey =
+      payload?.conversationKey ||
+      (chatType === "direct" && recipientId
+        ? getConversationKey(senderId, recipientId)
+        : groupId
+          ? `group:${groupId}`
+          : "");
+
+    if (!conversationKey) return;
+
+    const profile = await getTypingProfile(senderId);
+    const typingPayload = {
+      chatType,
+      conversationKey,
+      groupId: groupId || undefined,
+      userId: senderId,
+      name: profile.name,
+      image: profile.image,
+      isTyping,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (chatType === "group") {
+      if (!groupId) return;
+      const group = await Group.findById(groupId).select("members.user").lean();
+      const memberIds = (group?.members || []).map((member) =>
+        String(member.user?._id || member.user)
+      );
+      if (!memberIds.includes(senderId)) return;
+
+      memberIds
+        .filter((memberId) => memberId !== senderId)
+        .forEach((memberId) => {
+          io.to(getUserRoom(memberId)).emit("typing:update", typingPayload);
+        });
+      return;
+    }
+
+    if (!recipientId || recipientId === senderId) return;
+    io.to(getUserRoom(recipientId)).emit("typing:update", typingPayload);
+  };
+
   io.on("connection", async (socket) => {
     const userId = socket.data.userId;
 
@@ -1466,6 +1541,24 @@ const setupSocket = async (server) => {
     socket.on("send_message", (payload, callback) =>
       handleSendMessage({ socket, payload, callback })
     );
+
+    socket.on("typing:start", (payload = {}) => {
+      emitTypingUpdate({ socket, payload, isTyping: true }).catch((error) =>
+        logRuntimeEvent("warn", "typing.start.failed", {
+          userId: socket.data.userId,
+          message: error?.message || "unknown_error",
+        })
+      );
+    });
+
+    socket.on("typing:stop", (payload = {}) => {
+      emitTypingUpdate({ socket, payload, isTyping: false }).catch((error) =>
+        logRuntimeEvent("warn", "typing.stop.failed", {
+          userId: socket.data.userId,
+          message: error?.message || "unknown_error",
+        })
+      );
+    });
 
     socket.on("vote_poll", (payload, callback) =>
       handleVotePoll({ socket, payload, callback })

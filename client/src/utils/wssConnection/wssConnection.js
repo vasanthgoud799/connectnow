@@ -81,6 +81,7 @@ const attachSocketListeners = (nextSocket) => {
         data: {
           callType: data?.callType,
           callerUserId: data?.callerUserId,
+          notificationKind: "call",
         },
         onClick: () => dispatchFocusCallFromNotification(data),
       });

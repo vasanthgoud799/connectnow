@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import moment from "moment";
 import { connect } from "react-redux";
@@ -1104,6 +1104,7 @@ function Chat({
   const [messageLoadError, setMessageLoadError] = useState("");
   const [hasPendingNewMessages, setHasPendingNewMessages] = useState(false);
   const [isAtMessageBottom, setIsAtMessageBottom] = useState(true);
+  const [typingUsers, setTypingUsers] = useState({});
 
   const {
     userInfo,
@@ -1145,14 +1146,55 @@ function Chat({
 
   const socket = useSocket();
   const messageListRef = useRef(null);
+  const composerRef = useRef(null);
   const latestMessagesRequestRef = useRef(0);
   const lastRenderedMessageIdRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordingStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const sendingMessageRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
+  const typingActiveRef = useRef(false);
+  const lastTypingEmitRef = useRef(0);
 
   useHandleReceiveMessage(socket);
+
+  useEffect(() => {
+    const node = composerRef.current;
+    if (!node) return undefined;
+
+    const setComposerHeight = () => {
+      document.documentElement.style.setProperty(
+        "--chat-composer-height",
+        `${Math.ceil(node.getBoundingClientRect().height)}px`
+      );
+    };
+
+    setComposerHeight();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", setComposerHeight);
+      return () => window.removeEventListener("resize", setComposerHeight);
+    }
+
+    const observer = new ResizeObserver(setComposerHeight);
+    observer.observe(node);
+    window.addEventListener("resize", setComposerHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", setComposerHeight);
+    };
+  }, [
+    attachedFile.file,
+    autocompleteSuggestion,
+    editingMessageId,
+    isMobile,
+    isRecordingAudio,
+    replyingToMessage,
+    smartReplies.length,
+    text,
+  ]);
 
   useEffect(() => {
     if (!activeMessageMenuId) return undefined;
@@ -1184,6 +1226,118 @@ function Chat({
           ),
     [activeUsers, isGroupChat, selectedChatData, selectedChatEmail, selectedChatId, selectedChatName]
   );
+
+  const typingPayload = useMemo(
+    () => ({
+      chatType: isGroupChat ? "group" : "direct",
+      conversationKey: resolvedConversationKey,
+      groupId: isGroupChat ? selectedChatId : undefined,
+      recipientId: isGroupChat ? undefined : selectedChatId,
+    }),
+    [isGroupChat, resolvedConversationKey, selectedChatId]
+  );
+
+  const emitTypingState = useCallback(
+    (isTyping) => {
+      if (!socket || !resolvedConversationKey || !selectedChatId) return;
+
+      const eventName = isTyping ? "typing:start" : "typing:stop";
+      socket.emit(eventName, typingPayload);
+      typingActiveRef.current = isTyping;
+      lastTypingEmitRef.current = Date.now();
+    },
+    [resolvedConversationKey, selectedChatId, socket, typingPayload]
+  );
+
+  const scheduleTypingStop = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (typingActiveRef.current) {
+        emitTypingState(false);
+      }
+    }, 1800);
+  }, [emitTypingState]);
+
+  const handleComposerTextChange = useCallback(
+    (event) => {
+      const nextValue = event.target.value;
+      setText(nextValue);
+
+      if (!nextValue.trim() || editingMessageId) {
+        if (typingActiveRef.current) {
+          emitTypingState(false);
+        }
+        return;
+      }
+
+      const now = Date.now();
+      if (!typingActiveRef.current || now - lastTypingEmitRef.current > 1600) {
+        emitTypingState(true);
+      }
+      scheduleTypingStop();
+    },
+    [editingMessageId, emitTypingState, scheduleTypingStop]
+  );
+
+  const stopTypingNow = useCallback(() => {
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    if (typingActiveRef.current) {
+      emitTypingState(false);
+    }
+  }, [emitTypingState]);
+
+  useEffect(() => stopTypingNow, [resolvedConversationKey, stopTypingNow]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    const handleTypingUpdate = (payload = {}) => {
+      if (!payload?.conversationKey || payload.conversationKey !== resolvedConversationKey) {
+        return;
+      }
+
+      const typingUserId = payload.userId || payload.user?._id || payload.user?.id;
+      if (!typingUserId || String(typingUserId) === String(userInfo?.id)) return;
+
+      setTypingUsers((current) => {
+        const next = { ...current };
+        if (payload.isTyping) {
+          next[String(typingUserId)] = {
+            name: payload.name || payload.user?.firstName || payload.user?.email || "Someone",
+            expiresAt: Date.now() + 3500,
+          };
+        } else {
+          delete next[String(typingUserId)];
+        }
+        return next;
+      });
+    };
+
+    socket.on("typing:update", handleTypingUpdate);
+
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      setTypingUsers((current) => {
+        const entries = Object.entries(current).filter(
+          ([, value]) => Number(value.expiresAt || 0) > now
+        );
+        return entries.length === Object.keys(current).length
+          ? current
+          : Object.fromEntries(entries);
+      });
+    }, 1200);
+
+    return () => {
+      socket.off("typing:update", handleTypingUpdate);
+      clearInterval(intervalId);
+    };
+  }, [resolvedConversationKey, socket, userInfo?.id]);
 
   const isSelectedUserOnline =
     Boolean(activeCallUser) || selectedChatData?.status === "Online";
@@ -1319,6 +1473,15 @@ function Chat({
     [selectedChatBirthdayMeta, selectedChatId, upcomingBirthdays]
   );
   const canSend = text.trim().length > 0 || Boolean(attachedFile.file) || Boolean(editingMessageId);
+  const typingLabel = useMemo(() => {
+    const activeTypingUsers = Object.values(typingUsers);
+    if (!activeTypingUsers.length) return "";
+    if (!isGroupChat) return "Typing...";
+    const firstName = activeTypingUsers[0]?.name || "Someone";
+    return activeTypingUsers.length === 1
+      ? `${firstName} is typing...`
+      : `${firstName} and ${activeTypingUsers.length - 1} others are typing...`;
+  }, [isGroupChat, typingUsers]);
   const isUserBlocked = () =>
     userInfo?.blockedUsers?.includes(selectedChatId);
   const aiEnabled = Boolean(userInfo?.aiPreferences?.enabled);
@@ -3346,16 +3509,16 @@ function Chat({
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-0 min-w-0 flex-1 flex-col overflow-hidden overscroll-none touch-pan-y">
+    <div className="chat-shell">
       <div
-        className={`relative z-40 shrink-0 border-b border-white/8 backdrop-blur-xl ${
+        className={`mobile-safe-header relative ${
           isMobile
-            ? "min-h-[calc(72px+env(safe-area-inset-top))] px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]"
-            : "h-[88px] px-7"
+            ? ""
+            : "h-[88px]"
         }`}
       >
         <div
-          className={`flex items-center justify-between ${
+          className={`mobile-safe-header-inner justify-between ${
             isMobile ? "min-h-[56px] gap-3" : "h-full"
           }`}
         >
@@ -3413,13 +3576,14 @@ function Chat({
             <p
               className={`truncate ${
                 isMobile ? "pt-0.5 text-xs leading-4" : "text-sm"
-              } ${isSelectedUserOnline ? "text-cyan-300" : "text-slate-500"}`}
+              } ${typingLabel ? "text-cyan-200" : isSelectedUserOnline ? "text-cyan-300" : "text-slate-500"}`}
             >
-              {isGroupChat
+              {typingLabel ||
+                (isGroupChat
                 ? `${selectedChatData?.memberCount || selectedChatData?.members?.length || 0} members`
                 : isSelectedUserOnline
                   ? "Online"
-                  : "Offline"}
+                  : "Offline")}
             </p>
             {!isMobile && !isGroupChat && selectedBirthdayReminder && (
               <button
@@ -3644,7 +3808,7 @@ function Chat({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="chat-message-region">
         <div className={`shrink-0 ${isMobile ? "px-3 pt-4" : "px-7 pt-8"}`}>
           <div className={`${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}>
           {pinnedMessages[0] && (
@@ -3679,19 +3843,18 @@ function Chat({
               messageListRef.current?.scrollToBottom("smooth");
               setHasPendingNewMessages(false);
             }}
-            className={`absolute z-20 rounded-full bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_40px_rgba(34,211,238,0.24)] ${
-              isMobile ? "bottom-24 right-4" : "bottom-28 right-8"
-            }`}
+            className="jump-to-latest-button rounded-full bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_40px_rgba(34,211,238,0.24)]"
           >
-            New messages
+            {isAtMessageBottom ? "New messages" : "Jump to latest"}
           </button>
         )}
       </div>
 
       <div
-        className={`shrink-0 border-t border-white/8 bg-black/5 backdrop-blur-xl ${
+        ref={composerRef}
+        className={`chat-composer-shell ${
           isMobile
-            ? "z-20 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3"
+            ? "z-20 px-3 pt-3"
             : "px-7 py-5"
         }`}
       >
@@ -3920,7 +4083,8 @@ function Chat({
                   : "Type a message..."
             }
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={handleComposerTextChange}
+            onBlur={stopTypingNow}
             onKeyDown={(e) => {
               if (e.key === "Tab" && autocompleteSuggestion) {
                 e.preventDefault();
@@ -3930,6 +4094,7 @@ function Chat({
 
               if (e.key === "Enter") {
                 e.preventDefault();
+                stopTypingNow();
                 handleSendMessage();
               }
             }}
@@ -3966,7 +4131,10 @@ function Chat({
           <button
             type="button"
             data-testid="chat-send-button"
-            onClick={handleSendMessage}
+            onClick={() => {
+              stopTypingNow();
+              handleSendMessage();
+            }}
             className={`flex items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#22d3ee] text-white shadow-[0_18px_40px_rgba(34,211,238,0.2)] transition hover:scale-[1.02] ${
               isMobile ? "h-11 w-11 shrink-0" : "h-12 w-12"
             }`}

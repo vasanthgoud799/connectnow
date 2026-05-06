@@ -235,17 +235,25 @@ export const createChatSlice = (set, get) => ({
   replaceMessage: (nextMessage) =>
     set((state) => {
       const normalizedNextMessage = normalizeMessage(nextMessage);
+      if (!normalizedNextMessage) return {};
       const nextMessageId = getMessageId(normalizedNextMessage);
+      const conversationKey = getMessageConversationKey(normalizedNextMessage);
+      if (!conversationKey) return {};
 
       return {
-        selectedChatMessages: mergeMessages(
-          state.selectedChatMessages,
-          normalizedNextMessage
-        ),
-        messagesByConversationKey: updateCachedMessages(
-          state.messagesByConversationKey,
-          (messages) => mergeMessages(messages, normalizedNextMessage)
-        ),
+        selectedChatMessages:
+          state.selectedConversationKey === conversationKey
+            ? mergeMessages(state.selectedChatMessages, normalizedNextMessage)
+            : state.selectedChatMessages,
+        messagesByConversationKey: {
+          ...state.messagesByConversationKey,
+          [conversationKey]: mergeMessages(
+            Array.isArray(state.messagesByConversationKey?.[conversationKey])
+              ? state.messagesByConversationKey[conversationKey]
+              : [],
+            normalizedNextMessage
+          ),
+        },
         chatSummaries: state.chatSummaries.map((chat) =>
           String(chat.lastMessage?.messageId) === nextMessageId
             ? {
@@ -253,13 +261,13 @@ export const createChatSlice = (set, get) => ({
                 lastMessage: {
                   ...chat.lastMessage,
                   messageId: nextMessageId,
-                  sender: nextMessage.sender,
-                  content: nextMessage.content,
-                  messageType: nextMessage.messageType,
-                  timestamp: nextMessage.timestamp,
-                  status: nextMessage.status,
+                  sender: normalizedNextMessage.sender,
+                  content: normalizedNextMessage.content,
+                  messageType: normalizedNextMessage.messageType,
+                  timestamp: normalizedNextMessage.timestamp,
+                  status: normalizedNextMessage.status,
                 },
-                updatedAt: nextMessage.timestamp || chat.updatedAt,
+                updatedAt: normalizedNextMessage.timestamp || chat.updatedAt,
               }
             : chat
         ),

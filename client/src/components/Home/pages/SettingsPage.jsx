@@ -26,8 +26,10 @@ import { Input } from "@/components/ui/input";
 import RouteLoader from "@/components/ui/RouteLoader";
 import { toast } from "sonner";
 import {
+  getBrowserNotificationPermission,
   isBrowserNotificationSupported,
   requestBrowserNotificationPermission,
+  showBrowserNotification,
 } from "@/utils/browserNotifications";
 
 const PremiumUpgradeModal = lazy(() => import("../PremiumUpgradeModal"));
@@ -50,6 +52,9 @@ function SettingsPage() {
     userInfo?.aiPreferences?.translationLanguage || "English"
   );
   const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState(
+    getBrowserNotificationPermission()
+  );
   const browserNotificationsSupported = isBrowserNotificationSupported();
 
   const subscription = userInfo?.subscription || { plan: "free", expiresAt: null };
@@ -187,6 +192,7 @@ function SettingsPage() {
       Notification.permission === "granted"
         ? "granted"
         : await requestBrowserNotificationPermission();
+    setNotificationPermission(permission);
 
     if (permission !== "granted") {
       setBrowserNotificationsEnabled(false);
@@ -196,6 +202,25 @@ function SettingsPage() {
 
     setBrowserNotificationsEnabled(true);
     toast.success("Browser notifications turned on.");
+  };
+
+  const handleTestBrowserNotification = () => {
+    const permission = getBrowserNotificationPermission();
+    setNotificationPermission(permission);
+    if (!browserNotificationsEnabled || permission !== "granted") {
+      toast.error("Enable browser notifications before sending a test.");
+      return;
+    }
+
+    showBrowserNotification({
+      title: "ConnectNow notifications",
+      body: "Message and call alerts are ready.",
+      tag: "connectnow:test-notification",
+      data: {
+        notificationKind: "message",
+      },
+    });
+    toast.success("Test notification sent.");
   };
 
   return (
@@ -243,6 +268,18 @@ function SettingsPage() {
                 : "Enable notifications to get desktop or mobile browser alerts."
               : "This browser does not support notifications."}
           </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="themed-chip rounded-full px-3 py-1 text-xs">
+              Permission: {notificationPermission}
+            </span>
+            <button
+              type="button"
+              onClick={handleTestBrowserNotification}
+              className="themed-action-neutral rounded-full px-3 py-1.5 text-xs"
+            >
+              Test notification
+            </button>
+          </div>
         </div>
 
         <div className="themed-panel-soft themed-card-hover rounded-[24px] p-5">

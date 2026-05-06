@@ -118,6 +118,7 @@ const useHandleReceiveMessage = (socket) => {
               body,
               tag: `message:${nextMessage?.conversationKey}`,
               data: {
+                notificationKind: "message",
                 conversationKey: nextMessage?.conversationKey,
                 messageId: nextMessage?._id || nextMessage?.id,
               },

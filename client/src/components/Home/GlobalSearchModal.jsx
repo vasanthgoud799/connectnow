@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { useAppStore } from "@/store";
+import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
 
 const SEARCH_TABS = [
   { id: "all", label: "All" },
@@ -222,8 +223,8 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-md md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[88vh] w-full max-w-5xl flex-col rounded-t-[32px] p-5 shadow-[0_35px_90px_rgba(2,8,23,0.28)] md:h-[min(82vh,760px)] md:rounded-[32px] md:p-6">
-        <div className="mb-5 flex items-center justify-between gap-4">
+      <div className="themed-modal-surface flex h-[var(--app-viewport-height,88vh)] w-full max-w-5xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_35px_90px_rgba(2,8,23,0.28)] md:h-[min(82vh,760px)] md:rounded-[32px]">
+        <MobileSafeHeader className="md:rounded-t-[32px]">
           <div>
             <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">
               Global search
@@ -235,13 +236,13 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
           <button
             type="button"
             onClick={onClose}
-            className="themed-panel-soft rounded-full p-3"
+            className="themed-panel-soft ml-auto rounded-full p-3"
           >
             <X className="h-4 w-4" />
           </button>
-        </div>
+        </MobileSafeHeader>
 
-        <div className="mb-4 flex items-center gap-3">
+        <div className="mb-4 flex items-center gap-3 px-5 pt-5 md:px-6">
           <div className="themed-input flex h-13 flex-1 items-center rounded-[22px] px-4 py-3">
             <Search className="themed-subtitle h-4 w-4" />
             <input
@@ -253,7 +254,7 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
           </div>
         </div>
 
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="mb-5 flex flex-wrap gap-2 px-5 md:px-6">
           {SEARCH_TABS.map((tab) => (
             <button
               key={tab.id}
@@ -271,7 +272,7 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
         </div>
 
         {!debouncedQuery ? (
-          <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto pr-1 lg:grid-cols-[1.2fr_0.8fr] lg:overflow-visible lg:pr-0">
+          <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-5 pb-5 pr-1 lg:grid-cols-[1.2fr_0.8fr] lg:overflow-visible lg:px-6 lg:pb-6 lg:pr-6">
             <div className="themed-page-card rounded-[28px] p-6">
               <p className="themed-title mb-3 text-lg font-semibold">Recent searches</p>
               <div className="flex flex-wrap gap-2">
@@ -310,7 +311,7 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
             </div>
           </div>
         ) : (
-          <div className="scrollbar-hide grid flex-1 gap-3 overflow-y-auto pr-2">
+          <div className="scrollbar-hide grid flex-1 gap-3 overflow-y-auto px-5 pb-5 pr-2 md:px-6 md:pb-6">
             {flatResults.length ? (
               flatResults.map(({ type, item }) => {
                 const title =

@@ -40,6 +40,7 @@ import {
   formatFingerprintForDisplay,
 } from "@/crypto/e2eeService";
 import { useTrustStatus } from "../Chat/hooks/useTrustStatus";
+import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
 
 function getAttachmentKind(message) {
   const type = String(message?.messageType || "").toLowerCase();
@@ -896,8 +897,8 @@ function Detail({ onClose, activeUsers = [], callState }) {
   );
 
   return (
-    <div className="flex h-full flex-col bg-[#08111f]">
-      <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-white/10 bg-[#08111f] px-4 py-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#08111f]">
+      <MobileSafeHeader>
         <button
           type="button"
           onClick={onClose}
@@ -909,9 +910,9 @@ function Detail({ onClose, activeUsers = [], callState }) {
         <span className="themed-title flex-1 font-['Space_Grotesk'] text-xl font-semibold">
           {isGroupChat ? "Group Info" : "Contact Info"}
         </span>
-      </div>
+      </MobileSafeHeader>
 
-      <div className="space-y-6 overflow-y-auto p-5 no-scrollbar">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
         {isGroupChat ? (
           <>
             <div className="themed-page-card rounded-[28px] p-5">
