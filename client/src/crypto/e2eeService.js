@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api-client";
+import { sanitizeEncryptedMessageText } from "@/utils/chatMessages";
 import {
   E2EE_CONVERSATION_KEYS_ROUTE,
   E2EE_PUBLIC_KEY_ROUTE,
@@ -705,6 +706,19 @@ export const getLocalKeyPair = async (userId) => {
   return stored;
 };
 
+const ensureLocalKeyPair = async (userId) => {
+  try {
+    return await getLocalKeyPair(userId);
+  } catch (error) {
+    try {
+      await ensureUserE2EEIdentity({ id: userId });
+      return await getLocalKeyPair(userId);
+    } catch {
+      throw error;
+    }
+  }
+};
+
 export const fetchConversationPublicKeys = async ({ userId, groupId }) => {
   const cacheKey = groupId ? `group:${groupId}` : `direct:${userId}`;
   const now = Date.now();
@@ -749,7 +763,7 @@ export const encryptTextForConversation = async ({
   payloadType = "text",
 }) => {
   const normalizedPlaintext = String(plaintext || "");
-  const localKeyPair = await getLocalKeyPair(currentUserId);
+  const localKeyPair = await ensureLocalKeyPair(currentUserId);
   const conversationKeys = await fetchConversationPublicKeys({ userId, groupId });
   let rawKey;
   let iv;
@@ -806,7 +820,7 @@ export const encryptMediaFileForConversation = async ({
     throw new Error("File is required for encrypted upload.");
   }
 
-  const localKeyPair = await getLocalKeyPair(currentUserId);
+  const localKeyPair = await ensureLocalKeyPair(currentUserId);
   const conversationKeys = await fetchConversationPublicKeys({ userId, groupId });
   const { rawKey } = await runCryptoWorkerTask("generateAesKey");
   const envelope = groupId
@@ -1106,7 +1120,7 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   }
 
   const decryptPromise = (async () => {
-    const localKeyPair = await getLocalKeyPair(currentUserId);
+    const localKeyPair = await ensureLocalKeyPair(currentUserId);
 
     try {
       let plaintext = "";
@@ -1163,10 +1177,9 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
 
       console.error("E2EE decrypt failed:", error);
       return toCachedMessageShape({
-        content:
-          message.messageType === "text"
-            ? "[Unable to decrypt message on this device]"
-            : message.content,
+        content: message.messageType === "text" ? "" : message.content,
+        decryptedContent:
+          message.messageType === "text" ? "" : message.decryptedContent || "",
         decryptionError: true,
         isEncrypted: true,
       });
@@ -1215,7 +1228,7 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
 
   let localKeyPair = null;
   try {
-    localKeyPair = await getLocalKeyPair(currentUserId);
+    localKeyPair = await ensureLocalKeyPair(currentUserId);
   } catch {
     localKeyPair = null;
   }
@@ -1237,7 +1250,17 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
 
         if (cachedValue) {
           if (cachedValue.decryptionError) {
-            return { type: "fallback", message };
+            return {
+              type: "resolved",
+              message: {
+                ...message,
+                content: message.messageType === "text" ? "" : message.content,
+                decryptedContent:
+                  message.messageType === "text" ? "" : message.decryptedContent || "",
+                decryptionError: true,
+                isEncrypted: true,
+              },
+            };
           }
 
           if (cacheKey && !messageDecryptCache.has(cacheKey)) {
@@ -1259,10 +1282,9 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
             type: "resolved",
             message: {
               ...message,
-              content:
-                message.messageType === "text"
-                  ? "[Unable to decrypt message on this device]"
-                  : message.content,
+              content: message.messageType === "text" ? "" : message.content,
+              decryptedContent:
+                message.messageType === "text" ? "" : message.decryptedContent || "",
               decryptionError: true,
               isEncrypted: true,
             },
@@ -1411,28 +1433,33 @@ const resolveChatPreviewContent = (message) => {
   }
 
   if (message.encryption?.payloadType === "attachment-caption") {
-    return (
+    return sanitizeEncryptedMessageText(
       message.decryptedContent ||
-      message.content ||
-      (message.messageType === "audio" ? "Audio" : "Attachment")
+        message.content ||
+        (message.messageType === "audio" ? "Audio" : "Attachment"),
+      message
     );
   }
 
   if (message.messageType === "text") {
-    return message.decryptedContent || message.content || "";
+    return sanitizeEncryptedMessageText(
+      message.decryptedContent || message.content || "",
+      message
+    );
   }
 
-  return (
+  return sanitizeEncryptedMessageText(
     message.content ||
-    (message.messageType === "image"
-      ? "Image"
-      : message.messageType === "video"
-        ? "Video"
-        : message.messageType === "audio"
-          ? "Audio"
-          : message.messageType === "document"
-            ? "Document"
-            : "")
+      (message.messageType === "image"
+        ? "Image"
+        : message.messageType === "video"
+          ? "Video"
+          : message.messageType === "audio"
+            ? "Audio"
+            : message.messageType === "document"
+              ? "Document"
+              : ""),
+    message
   );
 };
 

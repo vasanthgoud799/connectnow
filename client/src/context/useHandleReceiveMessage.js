@@ -4,15 +4,23 @@ import {
   decryptIncomingMessage,
   preloadRecentEncryptedMedia,
 } from "@/crypto/e2eeService";
-import { areSameMessage, normalizeMessage } from "@/utils/chatMessages";
+import {
+  areSameMessage,
+  normalizeMessage,
+  sanitizeEncryptedMessageText,
+} from "@/utils/chatMessages";
 import {
   dispatchOpenChatFromNotification,
   showBrowserNotification,
 } from "@/utils/browserNotifications";
 
 const getMessageNotificationPreview = (message) => {
-  if (message?.decryptedContent) {
-    return String(message.decryptedContent);
+  const decryptedContent = sanitizeEncryptedMessageText(
+    message?.decryptedContent,
+    message
+  );
+  if (decryptedContent) {
+    return String(decryptedContent);
   }
 
   if (message?.messageType === "image") return "Sent an image";

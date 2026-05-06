@@ -1,6 +1,26 @@
 const toStringId = (value) =>
   value === undefined || value === null ? "" : String(value);
 
+const LEGACY_DECRYPT_PLACEHOLDERS = new Set([
+  "[Unable to decrypt message on this device]",
+  "Unable to decrypt message on this device",
+  "[Unable to decrypt this message on this device]",
+  "Unable to decrypt this message on this device",
+  "[Unable to decrypt media on this device]",
+  "Unable to decrypt media on this device",
+]);
+
+export const sanitizeEncryptedMessageText = (value, message = {}) => {
+  const text = toStringId(value).trim();
+  if (!text) return "";
+
+  if ((message?.encryption?.enabled || message?.decryptionError) && LEGACY_DECRYPT_PLACEHOLDERS.has(text)) {
+    return "";
+  }
+
+  return value === undefined || value === null ? "" : String(value);
+};
+
 export const getMessageId = (message) =>
   toStringId(message?._id || message?.id);
 
@@ -33,6 +53,8 @@ export const normalizeMessage = (message, { conversationKey } = {}) => {
 
   return {
     ...message,
+    content: sanitizeEncryptedMessageText(message.content, message),
+    decryptedContent: sanitizeEncryptedMessageText(message.decryptedContent, message),
     _id: normalizedId || message._id,
     id: normalizedId || message.id || normalizedClientMessageId,
     clientMessageId: normalizedClientMessageId || null,

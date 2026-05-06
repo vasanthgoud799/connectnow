@@ -443,7 +443,7 @@ function EncryptedMediaMessage({
       } catch (decryptError) {
         console.error("Unable to decrypt media attachment:", decryptError);
         if (!ignore) {
-          setError("Unable to decrypt this media on this device.");
+          setError("This media is unavailable on this device.");
         }
       } finally {
         if (!ignore) {
@@ -2592,7 +2592,7 @@ function Chat({
       );
     } catch (error) {
       console.error("Unable to encrypt poll:", error);
-      toast.error(error.message || "Failed to encrypt poll.");
+      toast.error("Unable to create poll.");
     }
   };
 
@@ -2891,7 +2891,7 @@ function Chat({
           "This contact has not initialized encrypted messaging yet. If they are online, ConnectNow is trying to prepare it now."
         );
       } else if (!shouldRetryAfterKeyInit) {
-        toast.error(error.message || "Unable to send encrypted message.");
+        toast.error("Unable to send message.");
       }
     } finally {
         setIsSendingMessage(false);
