@@ -36,6 +36,17 @@ function Profile() {
   const normalizedAbout = about.trim();
 
   useEffect(() => {
+    setFirstName(userInfo?.firstName || "");
+    setLastName(userInfo?.lastName || "");
+    setAbout(userInfo?.about || "");
+    setImage(userInfo?.image || "");
+    setBirthday(
+      userInfo?.birthday ? new Date(userInfo.birthday).toISOString().slice(0, 10) : ""
+    );
+    setImageFile(null);
+  }, [userInfo]);
+
+  useEffect(() => {
     let ignore = false;
 
     const loadIdentitySummary = async () => {
@@ -67,11 +78,14 @@ function Profile() {
   }, [userInfo]);
 
   const validateProfile = () => {
-    if (!normalizedFirstName) {
+    const nextFirstName = normalizedFirstName || userInfo?.firstName?.trim() || "";
+    const nextLastName = normalizedLastName || userInfo?.lastName?.trim() || "";
+
+    if (!nextFirstName) {
       toast.error("First Name is required.");
       return false;
     }
-    if (!normalizedLastName) {
+    if (!nextLastName) {
       toast.error("Last Name is required.");
       return false;
     }
@@ -114,11 +128,13 @@ function Profile() {
           : String(image || "").startsWith("data:")
             ? ""
             : image;
+        const nextFirstName = normalizedFirstName || userInfo?.firstName?.trim() || "";
+        const nextLastName = normalizedLastName || userInfo?.lastName?.trim() || "";
         const response = await apiClient.post(
           UPDATE_PROFILE_ROUTE,
           {
-            firstName: normalizedFirstName,
-            lastName: normalizedLastName,
+            firstName: nextFirstName,
+            lastName: nextLastName,
             image: persistedImage,
             imageUpload,
             about: normalizedAbout,

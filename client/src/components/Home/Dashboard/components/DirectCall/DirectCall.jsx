@@ -307,7 +307,11 @@ const DirectCall = (props) => {
   const isGroupCallIncoming = Boolean(groupCallIncoming);
   const isGroupCallActive = Boolean(groupCallSession);
   const isVideoCall = (groupCallSession?.callType || callType) === "video";
-  const isRemoteConnected = Boolean(remoteStream);
+  const isRemoteConnected =
+    (remoteStream?.getTracks?.().length || 0) > 0 ||
+    Boolean(callDiagnostics.remoteStreamReady) ||
+    Boolean(callDiagnostics.remoteAudioTrackReady) ||
+    Boolean(callDiagnostics.remoteVideoTrackReady);
   const isOutgoingCall = callState === callStates.CALL_CALLING;
   const isIncomingCall = callState === callStates.CALL_RINGING;
   const isDirectCallConnected = callState === callStates.CALL_CONNECTED;
@@ -688,7 +692,6 @@ const DirectCall = (props) => {
                 localCameraEnabled={props.localCameraEnabled}
                 localPreviewVisible={mediaControls.isLocalPreviewVisible}
                 localPreviewPosition={mediaControls.previewPosition}
-                onCycleLocalPreviewPosition={mediaControls.cyclePreviewPosition}
                 avatar={callerImage}
                 title={callerUsername || "Video call"}
                 statusLine={directCallPresentation.helperText}

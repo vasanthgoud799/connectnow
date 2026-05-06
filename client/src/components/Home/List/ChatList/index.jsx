@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
@@ -107,15 +107,16 @@ function ChatList() {
       return !chat.archived;
     });
 
-    if (!searchText.trim()) return tabFiltered;
+    const normalizedSearch = searchText.trim().toLowerCase();
+    if (!normalizedSearch) return tabFiltered;
 
     return tabFiltered.filter((chat) => {
       const participant = chat.participant || {};
       const group = chat.group || {};
       const haystack =
-        `${participant.firstName || ""} ${participant.lastName || ""} ${participant.email || ""} ${group.name || ""} ${group.description || ""} ${chat.lastMessage?.content || ""}`.toLowerCase();
+        `${participant.firstName || ""} ${participant.lastName || ""} ${participant.email || ""} ${group.name || ""} ${group.description || ""} ${chat.title || ""} ${chat.lastMessage?.content || ""}`.toLowerCase();
 
-      return haystack.includes(searchText.toLowerCase());
+      return haystack.includes(normalizedSearch);
     });
   }, [activeTab, chatSummaries, searchText]);
 
@@ -249,9 +250,13 @@ function ChatList() {
           ) : filteredChats.length === 0 ? (
             <div className="themed-panel-soft rounded-[24px] border-dashed px-4 py-8 text-center ">
               <MessageSquareMore className="mx-auto h-10 w-10 text-slate-500" />
-              <p className="themed-title mt-3">No chats yet</p>
+              <p className="themed-title mt-3">
+                {searchText.trim() ? "No chats match your search" : "No chats yet"}
+              </p>
               <p className="themed-subtitle mt-1 text-sm">
-                Add a contact to start your first conversation.
+                {searchText.trim()
+                  ? "Try a different name, email, group, or message keyword."
+                  : "Add a contact to start your first conversation."}
               </p>
             </div>
           ) : (

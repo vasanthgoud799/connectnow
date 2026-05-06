@@ -7,12 +7,10 @@ import {
   toggleMicrophoneTrack,
 } from "@/utils/webRTC/webRTCHandler";
 
-const PREVIEW_POSITIONS = ["top-right", "top-left", "bottom-right", "bottom-left"];
-
 export const useCallMediaControls = ({ containerRef, isVideoCall }) => {
   const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement));
   const [isLocalPreviewVisible, setIsLocalPreviewVisible] = useState(true);
-  const [previewPosition, setPreviewPosition] = useState("top-right");
+  const [previewPosition] = useState("top-right");
   const [cameraCount, setCameraCount] = useState(0);
   const [busyControl, setBusyControl] = useState(null);
 
@@ -64,13 +62,6 @@ export const useCallMediaControls = ({ containerRef, isVideoCall }) => {
     return false;
   }, [containerRef]);
 
-  const cyclePreviewPosition = useCallback(() => {
-    setPreviewPosition((current) => {
-      const currentIndex = PREVIEW_POSITIONS.indexOf(current);
-      return PREVIEW_POSITIONS[(currentIndex + 1) % PREVIEW_POSITIONS.length];
-    });
-  }, []);
-
   return {
     isFullscreen,
     isLocalPreviewVisible,
@@ -78,7 +69,6 @@ export const useCallMediaControls = ({ containerRef, isVideoCall }) => {
     canSwitchCamera: isVideoCall && cameraCount > 1,
     busyControl,
     setIsLocalPreviewVisible,
-    cyclePreviewPosition,
     handleToggleMicrophone: () =>
       withBusyState("microphone", () => toggleMicrophoneTrack()),
     handleToggleCamera: () =>

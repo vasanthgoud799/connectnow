@@ -397,17 +397,14 @@ export const updateProfile = async (req, res) => {
     if (!ensureDatabaseReady(res)) return;
 
     const { userId } = req;
-    // console.log("User ID in updateProfile:", userId); // Add this line for debugging
     const profile = req.validated?.profile || {};
+    const hasField = (field) =>
+      Object.prototype.hasOwnProperty.call(req.body || {}, field);
     const safeFirstName = normalizeProfileText(profile.firstName, 80);
     const safeLastName = normalizeProfileText(profile.lastName, 80);
     const safeAbout = normalizeProfileText(profile.about, 500);
     const image = profile.image;
     const imageUpload = profile.imageUpload;
-    const birthday =
-      profile.birthday instanceof Date && !Number.isNaN(profile.birthday.getTime())
-        ? profile.birthday
-        : null;
 
     if (!userId) {
       return res
@@ -415,29 +412,46 @@ export const updateProfile = async (req, res) => {
         .json({ message: "Unauthorized: No user ID provided" });
     }
 
-    if (!safeFirstName || !safeLastName || !(image || imageUpload?.storagePath)) {
-      return res
-        .status(400)
-        .json({ message: "First Name, Last Name, and Image are required" });
-    }
-
     const existingUser = await User.findById(userId).select(
-      "imageStorageProvider imageStoragePath imageStorageBucket"
+      "firstName lastName image about birthday imageStorageProvider imageStoragePath imageStorageBucket"
     );
 
+    if (!existingUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const nextFirstName = safeFirstName || existingUser.firstName || "";
+    const nextLastName = safeLastName || existingUser.lastName || "";
     const nextImage = imageUpload?.storagePath
       ? buildStableUserAvatarUrl({ req, userId })
-      : image;
+      : image || existingUser.image || "";
+    const nextAbout = hasField("about") ? safeAbout : existingUser.about || "";
+    const nextBirthday = hasField("birthday")
+      ? profile.birthday instanceof Date && !Number.isNaN(profile.birthday.getTime())
+        ? profile.birthday
+        : null
+      : existingUser.birthday || null;
+
+    if (!nextFirstName) {
+      return res.status(400).json({ message: "First name is required." });
+    }
+
+    if (!nextLastName) {
+      return res.status(400).json({ message: "Last name is required." });
+    }
 
     const updatePayload = {
-      firstName: safeFirstName,
-      lastName: safeLastName,
+      firstName: nextFirstName,
+      lastName: nextLastName,
       image: nextImage,
-      about: safeAbout,
-      birthday,
-      aiPreferences: profile.aiPreferences || undefined,
+      about: nextAbout,
+      birthday: nextBirthday,
       profileSetup: true,
     };
+
+    if (profile.aiPreferences !== undefined) {
+      updatePayload.aiPreferences = profile.aiPreferences;
+    }
 
     if (imageUpload?.storagePath) {
       updatePayload.imageStorageProvider = imageUpload.storageProvider || null;
@@ -449,10 +463,6 @@ export const updateProfile = async (req, res) => {
       new: true,
       runValidators: true,
     });
-
-    if (!userData) {
-      return res.status(404).json({ message: "User not found" });
-    }
 
     await syncSubscriptionState(userData);
 

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Gift, Search, UserPlus } from "lucide-react";
 
 import { apiClient } from "@/lib/api-client";
@@ -54,6 +54,7 @@ function ContactsPage({ onOpenChat }) {
       .toLowerCase()
       .includes(searchText.toLowerCase())
   );
+  const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => index);
 
   return (
     <div className="scrollbar-hide flex min-h-0 flex-1 flex-col overflow-y-auto bg-transparent px-4 pb-24 pt-4 md:overflow-hidden md:px-6 md:pb-5">
@@ -80,9 +81,36 @@ function ContactsPage({ onOpenChat }) {
 
       <div className="grid auto-rows-min gap-4 pb-2 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {loading ? (
-          <div className="themed-panel-soft themed-subtitle rounded-[24px] p-5">
-            Loading contacts...
-          </div>
+          <>
+            <div className="md:col-span-2 xl:col-span-3 2xl:col-span-4">
+              <div className="themed-panel-soft rounded-[24px] px-5 py-4 text-center">
+                <p className="themed-title font-['Space_Grotesk'] text-lg font-semibold">
+                  Loading contacts...
+                </p>
+                <p className="themed-subtitle mt-1 text-sm">
+                  Pulling your secure contact list and presence details.
+                </p>
+              </div>
+            </div>
+            {loadingPlaceholders.map((placeholder) => (
+              <div
+                key={placeholder}
+                className="themed-conversation-card animate-pulse rounded-[24px] p-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 rounded-full bg-white/10" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="h-4 w-32 rounded-full bg-white/10" />
+                    <div className="h-3 w-40 rounded-full bg-white/5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="h-3 w-24 rounded-full bg-white/10" />
+                  <div className="h-6 w-20 rounded-full bg-white/5" />
+                </div>
+              </div>
+            ))}
+          </>
         ) : filteredContacts.length === 0 ? (
           <div className="themed-panel-soft themed-subtitle rounded-[24px] border-dashed p-5">
             No contacts found.

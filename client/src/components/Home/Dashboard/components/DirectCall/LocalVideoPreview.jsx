@@ -12,7 +12,6 @@ const LocalVideoPreview = ({
   localCameraEnabled,
   isVisible,
   position = "top-right",
-  onCyclePosition,
 }) => {
   const videoRef = useRef(null);
 
@@ -33,10 +32,8 @@ const LocalVideoPreview = ({
   }
 
   return (
-    <button
-      type="button"
-      onClick={onCyclePosition}
-      title="Move local preview"
+    <div
+      title="Local camera preview"
       className={`absolute z-20 overflow-hidden rounded-[26px] border border-white/12 bg-[#08111f]/88 shadow-[0_24px_60px_rgba(2,8,23,0.52)] backdrop-blur-xl transition hover:scale-[1.02] ${positionClassMap[position] || positionClassMap["top-right"]} h-36 w-24 sm:h-44 sm:w-32`}
     >
       {localStream && localCameraEnabled && localStream.getVideoTracks().length ? (
@@ -62,7 +59,7 @@ const LocalVideoPreview = ({
         <span>You</span>
         <span className="h-2 w-2 rounded-full bg-emerald-400" />
       </div>
-    </button>
+    </div>
   );
 };
 

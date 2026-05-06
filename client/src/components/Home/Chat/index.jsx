@@ -3179,16 +3179,36 @@ function Chat({
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
-          <img
-            src={selectedChatData?.image || "/avatar.png"}
-            alt="Profile"
-            className={`${isMobile ? "h-11 w-11" : "h-12 w-12"} themed-glow-avatar rounded-full object-cover`}
-            onClick={() => {
-              setSelectedImage(selectedChatData?.image || "/avatar.png");
-              setIsModalOpen(true);
+          <button
+            type="button"
+            onClick={onToggleDetail}
+            className="shrink-0"
+            title="Open contact info"
+          >
+            <img
+              src={selectedChatData?.image || "/avatar.png"}
+              alt="Profile"
+              className={`${isMobile ? "h-11 w-11" : "h-12 w-12"} themed-glow-avatar rounded-full object-cover`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedImage(selectedChatData?.image || "/avatar.png");
+                setIsModalOpen(true);
+              }}
+            />
+          </button>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={onToggleDetail}
+            className="min-w-0 text-left"
+            title="Open contact info"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onToggleDetail();
+              }
             }}
-          />
-          <div className="min-w-0">
+          >
             <p
               className={`truncate font-['Space_Grotesk'] font-semibold tracking-[-0.02em] ${
                 isMobile ? "text-[1.15rem]" : "text-[1.35rem]"
@@ -3227,12 +3247,12 @@ function Chat({
                     <ShieldQuestion className="h-3.5 w-3.5" />
                   )}
                   {loadingContactTrustState
-                    ? "Checking key..."
+                    ? "Checking security"
                     : contactTrustState?.status === "verified"
-                      ? "Verified key"
+                      ? "Security verified"
                       : contactTrustState?.status === "changed"
-                        ? "Key changed"
-                        : "Unverified key"}
+                        ? "Security key changed"
+                        : "Security not verified"}
                 </span>
                 <span
                   data-testid="chat-trust-fingerprint"
@@ -3241,6 +3261,11 @@ function Chat({
                   {formatFingerprintForDisplay(contactTrustState?.fingerprint)}
                 </span>
               </div>
+            )}
+            {!isGroupChat && (
+              <p className="mt-1 text-[11px] text-slate-400">
+                Verify key helps confirm that your chat and calls are secure with this contact.
+              </p>
             )}
             {!isMobile && !isGroupChat && selectedBirthdayReminder && (
               <button
@@ -3276,9 +3301,11 @@ function Chat({
                   ? handleClearFingerprintVerification
                   : handleVerifyCurrentFingerprint
               }
-              title="Manage contact fingerprint verification"
+              title="Manage contact security verification"
             >
-              {contactTrustState?.status === "verified" ? "Verified" : "Verify key"}
+              {contactTrustState?.status === "verified"
+                ? "Verified secure chat"
+                : "Verify security"}
             </button>
           )}
           <button
@@ -3368,6 +3395,37 @@ function Chat({
                       <Search className="h-4 w-4" />
                       Search in chat
                     </button>
+                    {!isGroupChat && (
+                      <button
+                        type="button"
+                        className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
+                          contactTrustState?.status === "changed"
+                            ? "text-rose-200"
+                            : contactTrustState?.status === "verified"
+                              ? "text-emerald-200"
+                              : ""
+                        }`}
+                        onClick={() => {
+                          setShowMobileHeaderMenu(false);
+                          if (contactTrustState?.status === "verified") {
+                            handleClearFingerprintVerification();
+                            return;
+                          }
+                          handleVerifyCurrentFingerprint();
+                        }}
+                      >
+                        {contactTrustState?.status === "verified" ? (
+                          <ShieldCheck className="h-4 w-4" />
+                        ) : contactTrustState?.status === "changed" ? (
+                          <ShieldAlert className="h-4 w-4" />
+                        ) : (
+                          <ShieldQuestion className="h-4 w-4" />
+                        )}
+                        {contactTrustState?.status === "verified"
+                          ? "Verified secure chat"
+                          : "Verify security"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
@@ -3445,7 +3503,7 @@ function Chat({
               </button>
             </div>
           )}
-          </div>
+        </div>
         </div>
         <VirtualizedMessageList
           ref={messageListRef}

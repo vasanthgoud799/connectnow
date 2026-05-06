@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, UsersRound, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ function CreateGroup({ onClose, onCreated }) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [avatar, setAvatar] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
 
   useEffect(() => {
     const loadContacts = async () => {
@@ -34,6 +35,20 @@ function CreateGroup({ onClose, onCreated }) {
 
     loadContacts();
   }, []);
+
+  useEffect(() => {
+    if (!avatar) {
+      setAvatarPreview("");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(avatar);
+    setAvatarPreview(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [avatar]);
 
   const canCreate =
     name.trim().length >= 2 && selectedMembers.length >= 1;
@@ -108,7 +123,7 @@ function CreateGroup({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface animate-in fade-in zoom-in-95 duration-200 flex h-[88vh] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
+      <div className="themed-modal-surface animate-in fade-in zoom-in-95 duration-200 flex h-[92dvh] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-5 md:px-6">
@@ -128,18 +143,18 @@ function CreateGroup({ onClose, onCreated }) {
           </button>
         </div>
 
-        <div className="grid flex-1 gap-5 overflow-hidden p-5 md:p-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="grid flex-1 gap-5 overflow-hidden p-4 md:p-6 lg:grid-cols-[340px_minmax(0,1fr)]">
           
           {/* LEFT */}
-          <div className="space-y-4 overflow-y-auto pr-1 md:pr-2">
+          <div className="min-h-0 space-y-4 overflow-y-auto pr-1 md:pr-2">
             
             {/* Avatar Upload */}
             <div className="themed-page-card flex items-center gap-4 rounded-[24px] p-4">
               <label className="cursor-pointer">
                 <div className="themed-panel-soft flex h-20 w-20 items-center justify-center overflow-hidden rounded-[26px]">
-                  {avatar ? (
+                  {avatarPreview ? (
                     <img
-                      src={URL.createObjectURL(avatar)}
+                      src={avatarPreview}
                       alt="Group preview"
                       className="h-full w-full object-cover"
                     />
@@ -194,37 +209,34 @@ function CreateGroup({ onClose, onCreated }) {
               </p>
 
               <div className="mt-3 flex max-h-36 flex-wrap gap-2 overflow-y-auto pr-1">
-                {contacts
-                  .filter((c) => selectedSet.has(c._id))
-                  .map((c) => (
-                    <div
-                      key={c._id}
-                      className="themed-chip flex items-center gap-2 rounded-full px-3 py-1"
-                    >
-                      <img
-                        src={c.image || "/avatar.png"}
-                        className="h-6 w-6 rounded-full"
-                      />
-                      <span className="text-xs">
-                        {c.firstName || c.email}
-                      </span>
-                    </div>
-                  ))}
+                {contacts.filter((c) => selectedSet.has(c._id)).length ? (
+                  contacts
+                    .filter((c) => selectedSet.has(c._id))
+                    .map((c) => (
+                      <div
+                        key={c._id}
+                        className="themed-chip flex max-w-full items-center gap-2 rounded-full px-3 py-1"
+                      >
+                        <img
+                          src={c.image || "/avatar.png"}
+                          className="h-6 w-6 rounded-full"
+                        />
+                        <span className="truncate text-xs">
+                          {c.firstName || c.email}
+                        </span>
+                      </div>
+                    ))
+                ) : (
+                  <p className="themed-subtitle text-sm">
+                    Pick one or more contacts to see them here before creating the group.
+                  </p>
+                )}
               </div>
             </div>
-
-            {/* Button */}
-            <Button
-              onClick={handleCreate}
-              disabled={!canCreate || loading}
-              className="sticky bottom-0 h-12 w-full rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {loading ? "Creating..." : "Create group"}
-            </Button>
           </div>
 
           {/* RIGHT */}
-          <div className="flex min-h-0 flex-col">
+          <div className="flex min-h-0 flex-col overflow-hidden">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
                 <p className="themed-title text-base font-semibold">
@@ -299,6 +311,26 @@ function CreateGroup({ onClose, onCreated }) {
                 );
               })}
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 px-4 py-4 md:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="themed-action-neutral h-12 rounded-2xl px-5"
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!canCreate || loading}
+              className="h-12 rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] px-6 text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+            >
+              {loading ? "Creating..." : "Create group"}
+            </Button>
           </div>
         </div>
       </div>

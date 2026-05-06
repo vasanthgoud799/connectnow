@@ -9,7 +9,6 @@ const VideoCallView = ({
   localCameraEnabled,
   localPreviewVisible,
   localPreviewPosition,
-  onCycleLocalPreviewPosition,
   avatar,
   title,
   statusLine,
@@ -83,7 +82,6 @@ const VideoCallView = ({
         localCameraEnabled={localCameraEnabled}
         isVisible={localPreviewVisible}
         position={localPreviewPosition}
-        onCyclePosition={onCycleLocalPreviewPosition}
       />
     </div>
   );

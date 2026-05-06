@@ -35,7 +35,11 @@ import {
 import { callToOtherUser } from "@/utils/webRTC/webRTCHandler";
 import { isDirectCallBusy } from "@/store/actions/callActions";
 import { connect } from "react-redux";
-import { decryptMediaAttachmentToObjectUrl } from "@/crypto/e2eeService";
+import {
+  decryptMediaAttachmentToObjectUrl,
+  formatFingerprintForDisplay,
+} from "@/crypto/e2eeService";
+import { useTrustStatus } from "../Chat/hooks/useTrustStatus";
 
 function getAttachmentKind(message) {
   const type = String(message?.messageType || "").toLowerCase();
@@ -336,6 +340,21 @@ function Detail({ onClose, activeUsers = [], callState }) {
   );
 
   const hiddenMediaCount = Math.max(0, sharedMediaItems.length - 3);
+  const {
+    contactTrustState,
+    loadingContactTrustState,
+    verifyCurrentFingerprint,
+    clearFingerprintVerification,
+  } = useTrustStatus({
+    isGroupChat,
+    selectedChatId: selectedChatData?._id || selectedChatData?.id,
+    currentUserId: userInfo?.id,
+    displayName:
+      [selectedChatData?.firstName, selectedChatData?.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || selectedChatData?.email,
+  });
 
   useEffect(() => {
     let isCancelled = false;
@@ -1127,10 +1146,13 @@ function Detail({ onClose, activeUsers = [], callState }) {
                   <h5 className="themed-title font-['Space_Grotesk'] text-3xl font-semibold">
                     {[selectedChatData.firstName, selectedChatData.lastName]
                       .filter(Boolean)
-                      .join(" ")}
+                      .join(" ") || selectedChatData.email}
                   </h5>
                   <p className="themed-subtitle text-sm">
                     {selectedChatData.email}
+                  </p>
+                  <p className="text-xs text-cyan-300">
+                    {selectedChatData.status || "Offline"}
                   </p>
                 </div>
               </div>
@@ -1163,6 +1185,45 @@ function Detail({ onClose, activeUsers = [], callState }) {
               <p className="themed-subtitle mt-3 text-sm leading-7">
                 {selectedChatData.about || "No status set yet."}
               </p>
+            </div>
+
+            <div className="themed-page-card rounded-[28px] p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <span className="themed-title text-xl font-semibold">Security verification</span>
+                  <p className="themed-subtitle mt-2 text-sm leading-7">
+                    Verify key helps confirm that your chat and calls are secure with this contact.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="themed-action-info rounded-2xl"
+                  onClick={
+                    contactTrustState?.status === "verified"
+                      ? clearFingerprintVerification
+                      : verifyCurrentFingerprint
+                  }
+                >
+                  {contactTrustState?.status === "verified"
+                    ? "Verified secure chat"
+                    : "Verify security"}
+                </Button>
+              </div>
+              <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-400">
+                  {loadingContactTrustState
+                    ? "Checking security"
+                    : contactTrustState?.status === "verified"
+                      ? "Security verified"
+                      : contactTrustState?.status === "changed"
+                        ? "Security key changed"
+                        : "Security not verified"}
+                </p>
+                <p className="mt-2 break-all text-sm text-white">
+                  {formatFingerprintForDisplay(contactTrustState?.fingerprint) || "Fingerprint unavailable"}
+                </p>
+              </div>
             </div>
 
             {renderSharedGallery()}
