@@ -94,7 +94,7 @@ function Search({ onClose }) {
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#08111f]">
+    <div className="themed-shell themed-chat-canvas flex h-full min-h-0 flex-col overflow-hidden">
       <MobileSafeHeader>
         <button
           type="button"
@@ -130,13 +130,13 @@ function Search({ onClose }) {
         )}
       </MobileSafeHeader>
 
-      <div className="p-4">
+      <div className="px-4 pb-3 pt-4">
         <div className="themed-input flex items-center rounded-[24px] px-4 py-3">
           <SearchIcon className="themed-subtitle h-4 w-4" />
           <input
             type="text"
             placeholder="Search in this chat"
-            className="themed-title themed-subtitle flex-1 bg-transparent px-3 outline-none"
+            className="themed-title themed-subtitle flex-1 bg-transparent px-3 text-base outline-none"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
           />
@@ -145,7 +145,7 @@ function Search({ onClose }) {
 
       <Separator className="bg-white/10" />
 
-      <div className="scrollbar-hide flex-1 overflow-y-auto p-4">
+      <div className="no-scrollbar flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1">
         {!searchText.trim() ? (
           <div className="themed-page-card flex h-full flex-col items-center justify-center rounded-[28px] border-dashed px-6 text-center">
             <Sparkles className="h-10 w-10 text-cyan-200/70" />

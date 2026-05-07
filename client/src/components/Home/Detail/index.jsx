@@ -897,7 +897,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#08111f]">
+    <div className="themed-shell themed-chat-canvas flex h-full min-h-0 flex-col overflow-hidden">
       <MobileSafeHeader>
         <button
           type="button"
@@ -912,7 +912,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
         </span>
       </MobileSafeHeader>
 
-      <div className="no-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto p-5">
+      <div className="no-scrollbar min-h-0 flex-1 space-y-6 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 md:p-5">
         {isGroupChat ? (
           <>
             <div className="themed-page-card rounded-[28px] p-5">
