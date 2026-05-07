@@ -639,14 +639,13 @@
 
 @media (max-width: 768px) {
   .chat-shell {
-    height: var(--app-layout-height, var(--app-viewport-height, 100dvh));
-    max-height: var(--app-layout-height, var(--app-viewport-height, 100dvh));
+    height: var(--app-viewport-height, 100dvh);
+    max-height: var(--app-viewport-height, 100dvh);
   }
 
   .chat-composer-shell {
     z-index: 60;
-    position: sticky;
-    bottom: 0;
+    position: relative;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
