@@ -99,10 +99,28 @@ export const sortMessagesChronologically = (messages = []) =>
 export const mergeMessageRecords = (currentMessage, nextMessage) => {
   const normalizedCurrent = normalizeMessage(currentMessage) || {};
   const normalizedNext = normalizeMessage(nextMessage) || {};
+  const nextContent = sanitizeEncryptedMessageText(
+    normalizedNext.content,
+    normalizedNext
+  );
+  const nextDecryptedContent = sanitizeEncryptedMessageText(
+    normalizedNext.decryptedContent,
+    normalizedNext
+  );
+  const currentContent = sanitizeEncryptedMessageText(
+    normalizedCurrent.content,
+    normalizedCurrent
+  );
+  const currentDecryptedContent = sanitizeEncryptedMessageText(
+    normalizedCurrent.decryptedContent,
+    normalizedCurrent
+  );
 
   return normalizeMessage({
     ...normalizedCurrent,
     ...normalizedNext,
+    content: nextContent || currentContent || "",
+    decryptedContent: nextDecryptedContent || currentDecryptedContent || "",
     localPreviewUrl:
       normalizedNext.localPreviewUrl || normalizedCurrent.localPreviewUrl || null,
     resolvedMedia: normalizedNext.resolvedMedia || normalizedCurrent.resolvedMedia || null,

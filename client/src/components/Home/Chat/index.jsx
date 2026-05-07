@@ -1179,10 +1179,14 @@ function Chat({
     const observer = new ResizeObserver(setComposerHeight);
     observer.observe(node);
     window.addEventListener("resize", setComposerHeight);
+    window.visualViewport?.addEventListener("resize", setComposerHeight);
+    window.visualViewport?.addEventListener("scroll", setComposerHeight);
 
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", setComposerHeight);
+      window.visualViewport?.removeEventListener("resize", setComposerHeight);
+      window.visualViewport?.removeEventListener("scroll", setComposerHeight);
     };
   }, [
     attachedFile.file,

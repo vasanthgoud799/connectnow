@@ -587,13 +587,13 @@
 }
 
 .chat-shell {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: flex;
-  height: var(--app-viewport-height, 100dvh);
+  height: 100%;
   min-height: 0;
   min-width: 0;
-  max-height: var(--app-viewport-height, 100dvh);
+  max-height: 100%;
+  width: 100%;
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
@@ -637,8 +637,15 @@
 }
 
 @media (max-width: 768px) {
+  .chat-shell {
+    height: var(--app-viewport-height, 100dvh);
+    max-height: var(--app-viewport-height, 100dvh);
+  }
+
   .chat-composer-shell {
     z-index: 60;
+    position: sticky;
+    bottom: 0;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 }

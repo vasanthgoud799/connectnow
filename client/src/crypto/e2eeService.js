@@ -1177,9 +1177,13 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
 
       console.error("E2EE decrypt failed:", error);
       return toCachedMessageShape({
-        content: message.messageType === "text" ? "" : message.content,
+        content:
+          sanitizeEncryptedMessageText(message.content, message) ||
+          (message.messageType === "text" ? "" : message.content),
         decryptedContent:
-          message.messageType === "text" ? "" : message.decryptedContent || "",
+          sanitizeEncryptedMessageText(message.decryptedContent, message) ||
+          sanitizeEncryptedMessageText(message.content, message) ||
+          "",
         decryptionError: true,
         isEncrypted: true,
       });
@@ -1249,32 +1253,20 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
           (cacheKey ? persistedEntries[cacheKey] : null);
 
         if (cachedValue) {
-          if (cachedValue.decryptionError) {
-            return {
-              type: "resolved",
-              message: {
-                ...message,
-                content: message.messageType === "text" ? "" : message.content,
-                decryptedContent:
-                  message.messageType === "text" ? "" : message.decryptedContent || "",
-                decryptionError: true,
-                isEncrypted: true,
-              },
-            };
-          }
-
-          if (cacheKey && !messageDecryptCache.has(cacheKey)) {
+          if (!cachedValue.decryptionError && cacheKey && !messageDecryptCache.has(cacheKey)) {
             messageDecryptCache.set(cacheKey, cachedValue);
             trimMessageDecryptCache();
           }
 
-          return {
-            type: "resolved",
-            message: {
-              ...message,
-              ...cachedValue,
-            },
-          };
+          if (!cachedValue.decryptionError) {
+            return {
+              type: "resolved",
+              message: {
+                ...message,
+                ...cachedValue,
+              },
+            };
+          }
         }
 
         if (!localKeyPair) {
@@ -1282,9 +1274,13 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
             type: "resolved",
             message: {
               ...message,
-              content: message.messageType === "text" ? "" : message.content,
+              content:
+                sanitizeEncryptedMessageText(message.content, message) ||
+                (message.messageType === "text" ? "" : message.content),
               decryptedContent:
-                message.messageType === "text" ? "" : message.decryptedContent || "",
+                sanitizeEncryptedMessageText(message.decryptedContent, message) ||
+                sanitizeEncryptedMessageText(message.content, message) ||
+                "",
               decryptionError: true,
               isEncrypted: true,
             },
