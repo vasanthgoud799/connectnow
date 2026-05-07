@@ -101,6 +101,7 @@ const mediaDecryptPromiseCache = new Map();
 const MAX_MEDIA_OBJECT_URL_CACHE_SIZE = 80;
 const messageDecryptCache = new Map();
 const messageDecryptPromiseCache = new Map();
+const loggedDecryptFailures = new Set();
 const MAX_MESSAGE_DECRYPT_CACHE_SIZE = 600;
 const conversationKeysCache = new Map();
 const conversationKeysPromiseCache = new Map();
@@ -243,6 +244,12 @@ const toCachedMessageShape = (message) => ({
   isEncrypted: Boolean(message?.isEncrypted),
   decryptionError: Boolean(message?.decryptionError),
   decryptionPending: Boolean(message?.decryptionPending),
+  decryptionErrorCode: message?.decryptionErrorCode || null,
+  decryptionErrorName: message?.decryptionErrorName || null,
+  decryptionErrorMessage: message?.decryptionErrorMessage || null,
+  decryptionFailureReason: message?.decryptionFailureReason || null,
+  decryptionFailureLabel: message?.decryptionFailureLabel || null,
+  decryptionRetryable: Boolean(message?.decryptionRetryable),
   meta: message?.meta || null,
 });
 
@@ -256,6 +263,71 @@ const TRANSIENT_DECRYPTION_ERROR_MESSAGES = new Set([
 const isTransientDecryptError = (error) =>
   TRANSIENT_DECRYPTION_ERROR_MESSAGES.has(String(error?.message || "").trim());
 
+const classifyDecryptFailure = (error) => {
+  const message = String(error?.message || "").trim();
+  const name = String(error?.name || "").trim();
+  const code = error?.code == null ? null : String(error.code);
+  const normalizedMessage = message || name || "Unable to decrypt this message on this device.";
+
+  if (isTransientDecryptError(error)) {
+    return {
+      code,
+      label: "Encryption keys are still syncing to this device.",
+      message: normalizedMessage,
+      name,
+      reason: "keys_pending",
+      retryable: true,
+    };
+  }
+
+  if (/No decryptable key found/i.test(normalizedMessage)) {
+    return {
+      code,
+      label: "This device is missing the security keys needed for this older message.",
+      message: normalizedMessage,
+      name,
+      reason: "missing_private_key",
+      retryable: false,
+    };
+  }
+
+  if (["OperationError", "InvalidAccessError", "DataError"].includes(name)) {
+    return {
+      code,
+      label: "This message may have been encrypted with older or different device keys.",
+      message: normalizedMessage,
+      name,
+      reason: "key_mismatch",
+      retryable: false,
+    };
+  }
+
+  return {
+    code,
+    label: "This device could not decrypt this encrypted message.",
+    message: normalizedMessage,
+    name,
+    reason: "decrypt_failed",
+    retryable: false,
+  };
+};
+
+const logDecryptFailureOnce = (cacheKey, failureMeta) => {
+  const logKey = `${String(cacheKey || "message")}:${failureMeta.reason}:${failureMeta.message}`;
+  if (loggedDecryptFailures.has(logKey)) {
+    return;
+  }
+
+  loggedDecryptFailures.add(logKey);
+  console.error("E2EE decrypt failed:", {
+    cacheKey,
+    code: failureMeta.code,
+    message: failureMeta.message,
+    name: failureMeta.name,
+    reason: failureMeta.reason,
+  });
+};
+
 const buildPendingDecryptionShape = (message) =>
   toCachedMessageShape({
     ...message,
@@ -268,7 +340,7 @@ const buildPendingDecryptionShape = (message) =>
     isEncrypted: true,
   });
 
-const buildFailedDecryptionShape = (message) =>
+const buildFailedDecryptionShape = (message, failureMeta = {}) =>
   toCachedMessageShape({
     ...message,
     content:
@@ -280,6 +352,13 @@ const buildFailedDecryptionShape = (message) =>
       "",
     decryptionError: true,
     decryptionPending: false,
+    decryptionErrorCode: failureMeta.code || null,
+    decryptionErrorMessage: failureMeta.message || null,
+    decryptionErrorName: failureMeta.name || null,
+    decryptionFailureReason: failureMeta.reason || "decrypt_failed",
+    decryptionFailureLabel:
+      failureMeta.label || "This device could not decrypt this encrypted message.",
+    decryptionRetryable: Boolean(failureMeta.retryable),
     isEncrypted: true,
   });
 
@@ -1124,7 +1203,17 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   const cachedMessage = cacheKey ? messageDecryptCache.get(cacheKey) : null;
 
   if (cachedMessage) {
-    if (cachedMessage.decryptionError || cachedMessage.decryptionPending) {
+    if (cachedMessage.decryptionPending) {
+      messageDecryptCache.delete(cacheKey);
+    } else if (
+      cachedMessage.decryptionError &&
+      !cachedMessage.decryptionRetryable
+    ) {
+      return {
+        ...message,
+        ...cachedMessage,
+      };
+    } else if (cachedMessage.decryptionError) {
       messageDecryptCache.delete(cacheKey);
     } else {
       return {
@@ -1138,16 +1227,18 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
     try {
       const persistedMessage = await getStoredDecryptedMessage(cacheKey);
       if (persistedMessage) {
-        if (
-          !persistedMessage.decryptionError &&
-          !persistedMessage.decryptionPending
-        ) {
+        if (!persistedMessage.decryptionPending) {
           messageDecryptCache.set(cacheKey, persistedMessage);
           trimMessageDecryptCache();
-          return {
-            ...message,
-            ...persistedMessage,
-          };
+          if (
+            !persistedMessage.decryptionError ||
+            !persistedMessage.decryptionRetryable
+          ) {
+            return {
+              ...message,
+              ...persistedMessage,
+            };
+          }
         }
       }
     } catch {
@@ -1219,12 +1310,13 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
         }
       }
 
-      console.error("E2EE decrypt failed:", error);
-      if (isTransientDecryptError(error)) {
+      const failureMeta = classifyDecryptFailure(error);
+      logDecryptFailureOnce(cacheKey, failureMeta);
+      if (failureMeta.retryable) {
         return buildPendingDecryptionShape(message);
       }
 
-      return buildFailedDecryptionShape(message);
+      return buildFailedDecryptionShape(message, failureMeta);
     }
   })();
 
@@ -1237,8 +1329,8 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
 
     if (
       cacheKey &&
-      !resolvedMessage.decryptionError &&
-      !resolvedMessage.decryptionPending
+      !resolvedMessage.decryptionPending &&
+      (!resolvedMessage.decryptionError || !resolvedMessage.decryptionRetryable)
     ) {
       messageDecryptCache.set(cacheKey, resolvedMessage);
       trimMessageDecryptCache();
@@ -1305,7 +1397,10 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
             trimMessageDecryptCache();
           }
 
-          if (!cachedValue.decryptionError && !cachedValue.decryptionPending) {
+          if (
+            !cachedValue.decryptionPending &&
+            (!cachedValue.decryptionError || !cachedValue.decryptionRetryable)
+          ) {
             return {
               type: "resolved",
               message: {
@@ -1448,8 +1543,8 @@ export const hydrateMessagesFromCache = async ({ messages }) => {
 
     if (
       !cachedValue ||
-      cachedValue.decryptionError ||
-      cachedValue.decryptionPending
+      cachedValue.decryptionPending ||
+      (cachedValue.decryptionError && cachedValue.decryptionRetryable)
     ) {
       return message;
     }

@@ -3329,7 +3329,10 @@ function Chat({
             ? "Image unavailable"
             : message.messageType === "document"
               ? "Document unavailable"
-              : "Message unavailable";
+            : "Message unavailable";
+    const decryptionFailureLabel =
+      String(message?.decryptionFailureLabel || "").trim() ||
+      "Unable to decrypt this message on this device.";
 
     if (message.messageType === "system") {
       return (
@@ -3354,7 +3357,7 @@ function Chat({
       if (hasDecryptionFailure || !displayText) {
         return (
           <p className="text-sm italic text-slate-300/90">
-            {hasDecryptionFailure ? "Unable to decrypt this message yet." : "Message unavailable"}
+            {hasDecryptionFailure ? decryptionFailureLabel : "Message unavailable"}
           </p>
         );
       }
@@ -3381,7 +3384,7 @@ function Chat({
         <div className="space-y-2">
           <p className="text-sm italic text-slate-300/90">
             {hasDecryptionFailure
-              ? `Unable to decrypt this ${message.messageType || "message"}.`
+              ? decryptionFailureLabel
               : fallbackLabel}
           </p>
           {attachmentCaption ? (

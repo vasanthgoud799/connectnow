@@ -30,10 +30,21 @@ export const useVirtualizedList = ({
     update();
     element.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("scroll", update);
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(update);
+      resizeObserver.observe(element);
+    }
 
     return () => {
       element.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("resize", update);
+      window.visualViewport?.removeEventListener("scroll", update);
+      resizeObserver?.disconnect();
     };
   }, [containerRef]);
 

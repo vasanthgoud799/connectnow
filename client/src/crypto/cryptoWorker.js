@@ -26,6 +26,26 @@ const base64ToArrayBuffer = (base64) => {
   return bytes.buffer;
 };
 
+const serializeError = (error) => {
+  if (error instanceof Error) {
+    const normalizedMessage = String(error.message || "").trim();
+    return {
+      code:
+        typeof error.code === "string" || typeof error.code === "number"
+          ? String(error.code)
+          : null,
+      message: normalizedMessage || error.name || "Crypto worker failed.",
+      name: error.name || "Error",
+    };
+  }
+
+  return {
+    code: null,
+    message: String(error || "Crypto worker failed."),
+    name: "Error",
+  };
+};
+
 const createFingerprint = async (publicKeyJwk) => {
   const digest = await self.crypto.subtle.digest(
     "SHA-256",
@@ -399,10 +419,11 @@ self.onmessage = async (event) => {
     };
     self.postMessage(response, transferables);
   } catch (error) {
+    const serializedError = serializeError(error);
     self.postMessage({
       id,
       ok: false,
-      error: error instanceof Error ? error.message : "Crypto worker failed.",
+      error: serializedError,
     });
   }
 };

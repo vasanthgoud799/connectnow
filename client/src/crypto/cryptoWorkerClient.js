@@ -1,6 +1,22 @@
 let cryptoWorker = null;
 let requestCounter = 0;
 const pendingRequests = new Map();
+const normalizeWorkerError = (error) => {
+  if (error && typeof error === "object") {
+    const normalizedMessage = String(error.message || "").trim();
+    const nextError = new Error(
+      normalizedMessage || String(error.name || "Crypto worker request failed.")
+    );
+    nextError.name = String(error.name || "Error");
+    if (error.code !== undefined && error.code !== null) {
+      nextError.code = String(error.code);
+    }
+    nextError.workerError = error;
+    return nextError;
+  }
+
+  return new Error(String(error || "Crypto worker request failed."));
+};
 let createWorker = () =>
   new Worker(new URL("./cryptoWorker.js", import.meta.url), {
     type: "module",
@@ -28,8 +44,14 @@ const getCryptoWorker = () => {
       return;
     }
 
-    console.error("Crypto worker task failed:", error || "unknown_error");
-    pending.reject(new Error(error || "Crypto worker request failed."));
+    const nextError = normalizeWorkerError(error);
+    console.error(
+      "Crypto worker task failed:",
+      nextError.name,
+      nextError.message,
+      nextError.code ? `(code: ${nextError.code})` : ""
+    );
+    pending.reject(nextError);
   };
 
   cryptoWorker.onerror = (event) => {

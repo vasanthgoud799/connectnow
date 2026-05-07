@@ -641,19 +641,18 @@
   .chat-shell {
     height: var(--app-viewport-height, 100dvh);
     max-height: var(--app-viewport-height, 100dvh);
-    padding-bottom: calc(
-      var(--chat-composer-height, 84px) + var(--app-keyboard-offset, 0px)
-    );
   }
 
   .chat-composer-shell {
-    z-index: 60;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: var(--app-keyboard-offset, 0px);
-    margin-top: 0;
+    position: relative;
+    z-index: 20;
+    margin-top: auto;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .chat-message-region {
+    min-height: 0;
+    flex: 1 1 auto;
   }
 
   .chat-message-scroll {

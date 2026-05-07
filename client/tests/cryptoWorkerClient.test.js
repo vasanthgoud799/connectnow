@@ -73,3 +73,35 @@ test("crypto worker client rejects all pending requests when the worker crashes"
   await assert.rejects(pending, /worker exploded/i);
   assert.equal(worker.terminated, true);
 });
+
+test("crypto worker client preserves structured worker error details", async () => {
+  __resetCryptoWorkerClientForTests();
+  const worker = new FakeWorker();
+  __setCryptoWorkerFactoryForTests(() => worker);
+
+  const pending = runCryptoWorkerTask("decryptMessage", {
+    encryptedPayload: "payload",
+  });
+
+  const [request] = worker.messages;
+  worker.onmessage({
+    data: {
+      id: request.id,
+      ok: false,
+      error: {
+        name: "OperationError",
+        message: "",
+        code: "ERR_CRYPTO_DECRYPT",
+      },
+    },
+  });
+
+  await assert.rejects(
+    pending,
+    (error) =>
+      error instanceof Error &&
+      error.name === "OperationError" &&
+      error.message === "OperationError" &&
+      error.code === "ERR_CRYPTO_DECRYPT"
+  );
+});
