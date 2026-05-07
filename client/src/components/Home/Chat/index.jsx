@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import moment from "moment";
 import { connect } from "react-redux";
 import {
-  ArrowLeft,
   BarChart3,
   CalendarClock,
   ChevronDown,
@@ -13,7 +12,6 @@ import {
   Download,
   Forward,
   ExternalLink,
-  FileText,
   Gift,
   Info,
   Mic,
@@ -42,7 +40,11 @@ import {
 import { Input } from "@/components/ui/input";
 import AttachmentMenu from "./AttachmentMenu";
 import RouteLoader from "@/components/ui/RouteLoader";
-import VirtualizedMessageList from "./VirtualizedMessageList";
+import ChatView from "./ChatView";
+import ChatHeader from "./ChatHeader";
+import MessageList from "./MessageList";
+import MessageComposer from "./MessageComposer";
+import EmptyChatState from "./EmptyChatState";
 import Tick from "../List/ChatList/Tick";
 import { useAppStore } from "@/store";
 import { useSocket } from "@/context/SocketContext";
@@ -59,7 +61,6 @@ import {
   CALLS_LOG_ROUTE,
   GET_ALL_MESSAGES_ROUTES,
   MARK_MESSAGES_SEEN_ROUTE,
-  SCHEDULED_MESSAGES_ROUTE,
   STARRED_MESSAGES_ROUTE,
   UPCOMING_BIRTHDAYS_ROUTE,
   UPLOAD_FILE_ROUTE,
@@ -2918,38 +2919,6 @@ function Chat({
     return `${mins}:${secs}`;
   };
 
-  const getAttachmentLabel = () => {
-    if (!attachedFile.file) return "";
-
-    const attachmentKind = normalizeAttachmentKind(
-      attachedFile.type,
-      attachedFile.file.type
-    );
-
-    if (attachmentKind === "image") return `Photo ready: ${attachedFile.file.name}`;
-    if (attachmentKind === "video") return `Video ready: ${attachedFile.file.name}`;
-    if (attachmentKind === "audio") {
-      return attachedFile.file.name.startsWith("voice-note-")
-        ? "Voice note ready to send"
-        : `Audio ready: ${attachedFile.file.name}`;
-    }
-
-    return `Document ready: ${attachedFile.file.name}`;
-  };
-
-  const getAttachmentIcon = () => {
-    const attachmentKind = normalizeAttachmentKind(
-      attachedFile.type,
-      attachedFile.file?.type
-    );
-
-    if (attachmentKind === "audio") {
-      return <Mic className="themed-attachment-icon h-4 w-4" />;
-    }
-
-    return <FileText className="themed-attachment-icon h-4 w-4" />;
-  };
-
   const renderAttachmentPreview = () => {
     if (!attachedFile.file || !attachmentPreviewUrl) return null;
 
@@ -3344,8 +3313,13 @@ function Chat({
     const attachmentCaption = String(message.decryptedContent || "").trim();
     const isAwaitingDecryption =
       Boolean(message?.encryption?.enabled) &&
-      !message?.decryptionError &&
-      !String(message?.decryptedContent || message?.content || "").trim();
+      (message?.decryptionPending ||
+        (!message?.decryptionError &&
+          !String(message?.decryptedContent || message?.content || "").trim()));
+    const hasDecryptionFailure =
+      Boolean(message?.encryption?.enabled) &&
+      Boolean(message?.decryptionError) &&
+      !message?.decryptionPending;
     const fallbackLabel =
       message.messageType === "audio"
         ? "Audio unavailable"
@@ -3377,10 +3351,10 @@ function Chat({
         );
       }
 
-      if (!displayText) {
+      if (hasDecryptionFailure || !displayText) {
         return (
           <p className="text-sm italic text-slate-300/90">
-            Message unavailable
+            {hasDecryptionFailure ? "Unable to decrypt this message yet." : "Message unavailable"}
           </p>
         );
       }
@@ -3402,10 +3376,14 @@ function Chat({
       );
     }
 
-    if (!message.fileUrl) {
+    if (!message.fileUrl || hasDecryptionFailure) {
       return (
         <div className="space-y-2">
-          <p className="text-sm italic text-slate-300/90">{fallbackLabel}</p>
+          <p className="text-sm italic text-slate-300/90">
+            {hasDecryptionFailure
+              ? `Unable to decrypt this ${message.messageType || "message"}.`
+              : fallbackLabel}
+          </p>
           {attachmentCaption ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6">
               {renderTextWithMentions(attachmentCaption)}
@@ -3533,6 +3511,59 @@ function Chat({
     setShowStarredModal(false);
   };
 
+  const retryLoadMessages = () => {
+    if (!resolvedConversationKey) return;
+    setMessageLoadError("");
+    setConversationMessagesLoading(resolvedConversationKey, false);
+    useAppStore.setState((state) => ({
+      messagesLoadedByConversationKey: {
+        ...state.messagesLoadedByConversationKey,
+        [resolvedConversationKey]: false,
+      },
+    }));
+  };
+
+  const selectedChatTitle = isGroupChat
+    ? selectedChatData?.name
+    : [selectedChatData?.firstName, selectedChatData?.lastName]
+        .filter(Boolean)
+        .join(" ") || selectedChatData?.email;
+
+  const selectedChatStatus = isGroupChat
+    ? `${selectedChatData?.memberCount || selectedChatData?.members?.length || 0} members`
+    : isSelectedUserOnline
+      ? "Online"
+      : "Offline";
+
+  const birthdayChip =
+    !isMobile && !isGroupChat && selectedBirthdayReminder ? (
+      <button
+        type="button"
+        onClick={() => openScheduleModal("birthday")}
+        className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200 transition hover:bg-amber-400/15"
+      >
+        <Gift className="h-3.5 w-3.5" />
+        {selectedBirthdayReminder.daysUntilBirthday === 0
+          ? "Birthday today"
+          : `Birthday in ${selectedBirthdayReminder.daysUntilBirthday} day${
+              selectedBirthdayReminder.daysUntilBirthday === 1 ? "" : "s"
+            }`}
+      </button>
+    ) : null;
+
+  const warningBanner =
+    !isGroupChat && contactTrustState?.status === "changed" ? (
+      <div className="border-b border-rose-400/15 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
+        This contact&apos;s security key has changed. Verify the new fingerprint before you share sensitive information.
+      </div>
+    ) : null;
+
+  const decryptingBanner = isDecryptingMessages ? (
+    <div className="border-b border-cyan-400/10 bg-cyan-400/6 px-4 py-2 text-xs text-cyan-100">
+      Decrypting secure messages in the background...
+    </div>
+  ) : null;
+
   if (!userInfo) {
     return (
       <div className="flex h-full items-center justify-center text-slate-400">
@@ -3542,392 +3573,268 @@ function Chat({
   }
 
   if (!selectedChatData) {
-    return (
-      <div className="flex h-full flex-1 flex-col">
-        <div className="flex h-[86px] items-center justify-between border-b border-white/8 px-6">
-          <div className="flex items-center gap-4">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-[#ef5da8] to-[#68d8ff]" />
-            <div>
-              <p className="font-['Space_Grotesk'] text-xl font-semibold">Messages</p>
-              <p className="text-sm text-slate-400">
-                Choose a conversation to start chatting
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className="relative flex flex-1 items-center justify-center overflow-hidden px-8">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.03),_transparent_42%)]" />
-          <div className="text-center">
-            <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-[#ef5da8]/70 themed-title/70 text-4xl font-semibold text-white shadow-[0_20px_50px_rgba(104,216,255,0.18)]">
-              {userInfo?.firstName?.[0] || "C"}
-            </div>
-            <p className="mt-6 font-['Space_Grotesk'] text-4xl font-semibold tracking-[-0.03em] themed-title/40">
-              {userInfo?.firstName || "ConnectNow"}
-            </p>
-            <p className="mx-auto mt-4 max-w-xl text-lg leading-8 text-slate-400">
-              This is the beginning of your conversation space. Pick a contact from the left and start messaging in a cleaner, more premium chat view.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return <EmptyChatState />;
   }
 
   return (
-    <div className="chat-shell">
-      <div
-        className={`mobile-safe-header relative ${
-          isMobile
-            ? ""
-            : "h-[88px]"
-        }`}
-      >
-        <div
-          className={`mobile-safe-header-inner justify-between ${
-            isMobile ? "min-h-[56px] gap-3" : "h-full"
-          }`}
-        >
-        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
-          {isMobile && (
-            <button
-              type="button"
-              onClick={onBack}
-              className="themed-panel-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onToggleDetail}
-            className="shrink-0"
-            title="Open contact info"
-          >
-            <img
-              src={selectedChatData?.image || "/avatar.png"}
-              alt="Profile"
-              className={`${isMobile ? "h-11 w-11" : "h-12 w-12"} themed-glow-avatar rounded-full object-cover`}
-              onClick={(event) => {
-                event.stopPropagation();
-                setSelectedImage(selectedChatData?.image || "/avatar.png");
-                setIsModalOpen(true);
-              }}
-            />
-          </button>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={onToggleDetail}
-            className="min-w-0 flex-1 text-left"
-            title="Open contact info"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onToggleDetail();
-              }
+    <>
+      <ChatView
+        header={
+          <ChatHeader
+            isMobile={isMobile}
+            onBack={onBack}
+            avatarSrc={selectedChatData?.image || "/avatar.png"}
+            title={selectedChatTitle}
+            status={{
+              label: selectedChatStatus,
+              className: isSelectedUserOnline ? "text-cyan-300" : "text-slate-500",
             }}
-          >
-            <p
-              className={`truncate font-['Space_Grotesk'] font-semibold tracking-[-0.02em] ${
-                isMobile ? "text-[1.05rem] leading-5" : "text-[1.35rem]"
-              }`}
-            >
-              {isGroupChat
-                ? selectedChatData?.name
-                : [selectedChatData?.firstName, selectedChatData?.lastName]
-                    .filter(Boolean)
-                    .join(" ") || selectedChatData?.email}
-            </p>
-            <p
-              className={`truncate ${
-                isMobile ? "pt-0.5 text-xs leading-4" : "text-sm"
-              } ${typingLabel ? "text-cyan-200" : isSelectedUserOnline ? "text-cyan-300" : "text-slate-500"}`}
-            >
-              {typingLabel ||
-                (isGroupChat
-                ? `${selectedChatData?.memberCount || selectedChatData?.members?.length || 0} members`
-                : isSelectedUserOnline
-                  ? "Online"
-                  : "Offline")}
-            </p>
-            {!isMobile && !isGroupChat && selectedBirthdayReminder && (
-              <button
-                type="button"
-                onClick={() => openScheduleModal("birthday")}
-                className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200 transition hover:bg-amber-400/15"
-              >
-                <Gift className="h-3.5 w-3.5" />
-                {selectedBirthdayReminder.daysUntilBirthday === 0
-                  ? "Birthday today"
-                  : `Birthday in ${selectedBirthdayReminder.daysUntilBirthday} day${
-                      selectedBirthdayReminder.daysUntilBirthday === 1 ? "" : "s"
-                    }`}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`flex shrink-0 items-center text-slate-400 ${
-            isMobile ? "gap-2" : "gap-3"
-          }`}
-        >
-          {!isGroupChat && (
-            <button
-              type="button"
-              data-testid="chat-verify-key-button"
-              className={`themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex ${
-                contactTrustState?.status === "changed"
-                  ? "border border-rose-400/25 text-rose-200"
-                  : contactTrustState?.status === "verified"
-                    ? "text-emerald-200"
-                    : ""
-              }`}
-              onClick={
-                contactTrustState?.status === "verified"
-                  ? handleClearFingerprintVerification
-                  : handleVerifyCurrentFingerprint
-              }
-              title="Manage contact security verification"
-            >
-              {loadingContactTrustState
-                ? "Checking..."
-                : contactTrustState?.status === "verified"
-                  ? "Verified"
-                  : "Verify"}
-            </button>
-          )}
-          <button
-            type="button"
-            className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
-            onClick={() => openScheduleModal("general")}
-          >
-            <CalendarClock className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className={`themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex ${
-              !isPremiumUser ? "opacity-80" : ""
-            }`}
-            onClick={openSummaryModal}
-            title={
-              isPremiumUser
-                ? "Summarize chat"
-                : "Upgrade to Premium to unlock AI summaries"
-            }
-          >
-            {isPremiumUser ? <Sparkles className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
-            onClick={() =>
-              isGroupChat ? openGroupCallPicker("audio") : initiateCall("audio")
-            }
-            title={isGroupChat ? "Call a group member" : "Audio call"}
-          >
-            <Phone className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
-            onClick={() =>
-              isGroupChat ? openGroupCallPicker("video") : initiateCall("video")
-            }
-            title={isGroupChat ? "Video call a group member" : "Video call"}
-          >
-            <Video className="h-4 w-4" />
-          </button>
-          {!isMobile && (
-            <>
-              <button
-                type="button"
-                className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
-                onClick={onToggleSearch}
-              >
-                <Search className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
-                onClick={onToggleDetail}
-              >
-                <Info className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          {isMobile && (
-            <div className="relative z-50">
-              <button
-                type="button"
-                className="themed-panel-soft flex h-11 w-11 items-center justify-center rounded-2xl transition hover:text-white"
-                onClick={() => setShowMobileHeaderMenu((prev) => !prev)}
-              >
-                <MoreVertical className="h-4 w-4" />
-              </button>
-              {showMobileHeaderMenu && (
-                <>
+            onOpenDetail={onToggleDetail}
+            onPreviewAvatar={() => {
+              setSelectedImage(selectedChatData?.image || "/avatar.png");
+              setIsModalOpen(true);
+            }}
+            birthdayChip={birthdayChip}
+            warningBanner={warningBanner}
+            decryptingBanner={decryptingBanner}
+            desktopActions={
+              <>
+                {!isGroupChat && (
                   <button
                     type="button"
-                    className="fixed inset-0 z-[90] cursor-default"
-                    onClick={() => setShowMobileHeaderMenu(false)}
-                  />
-                  <div className="themed-modal-surface absolute right-0 top-12 z-[100] w-56 rounded-[18px] border border-white/10 p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
-                      onClick={() => {
-                        setShowMobileHeaderMenu(false);
-                        onToggleSearch();
-                      }}
-                    >
-                      <Search className="h-4 w-4" />
-                      Search in chat
-                    </button>
-                    {!isGroupChat && (
+                    data-testid="chat-verify-key-button"
+                    className={`themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex ${
+                      contactTrustState?.status === "changed"
+                        ? "border border-rose-400/25 text-rose-200"
+                        : contactTrustState?.status === "verified"
+                          ? "text-emerald-200"
+                          : ""
+                    }`}
+                    onClick={
+                      contactTrustState?.status === "verified"
+                        ? handleClearFingerprintVerification
+                        : handleVerifyCurrentFingerprint
+                    }
+                    title="Manage contact security verification"
+                  >
+                    {loadingContactTrustState
+                      ? "Checking..."
+                      : contactTrustState?.status === "verified"
+                        ? "Verified"
+                        : "Verify"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
+                  onClick={() => openScheduleModal("general")}
+                >
+                  <CalendarClock className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className={`themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex ${
+                    !isPremiumUser ? "opacity-80" : ""
+                  }`}
+                  onClick={openSummaryModal}
+                  title={
+                    isPremiumUser
+                      ? "Summarize chat"
+                      : "Upgrade to Premium to unlock AI summaries"
+                  }
+                >
+                  {isPremiumUser ? <Sparkles className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                  onClick={() =>
+                    isGroupChat ? openGroupCallPicker("audio") : initiateCall("audio")
+                  }
+                  title={isGroupChat ? "Call a group member" : "Audio call"}
+                >
+                  <Phone className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                  onClick={() =>
+                    isGroupChat ? openGroupCallPicker("video") : initiateCall("video")
+                  }
+                  title={isGroupChat ? "Video call a group member" : "Video call"}
+                >
+                  <Video className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
+                  onClick={onToggleSearch}
+                >
+                  <Search className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                  onClick={onToggleDetail}
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+              </>
+            }
+            mobileActions={
+              <>
+                <button
+                  type="button"
+                  className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                  onClick={() =>
+                    isGroupChat ? openGroupCallPicker("audio") : initiateCall("audio")
+                  }
+                  title={isGroupChat ? "Call a group member" : "Audio call"}
+                >
+                  <Phone className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  className="themed-panel-soft flex h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white"
+                  onClick={() =>
+                    isGroupChat ? openGroupCallPicker("video") : initiateCall("video")
+                  }
+                  title={isGroupChat ? "Video call a group member" : "Video call"}
+                >
+                  <Video className="h-4 w-4" />
+                </button>
+                <div className="relative z-50">
+                  <button
+                    type="button"
+                    className="themed-panel-soft flex h-11 w-11 items-center justify-center rounded-2xl transition hover:text-white"
+                    onClick={() => setShowMobileHeaderMenu((prev) => !prev)}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {showMobileHeaderMenu && (
+                    <>
                       <button
                         type="button"
-                        className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
-                          contactTrustState?.status === "changed"
-                            ? "text-rose-200"
-                            : contactTrustState?.status === "verified"
-                              ? "text-emerald-200"
-                              : ""
-                        }`}
-                        onClick={() => {
-                          setShowMobileHeaderMenu(false);
-                          if (contactTrustState?.status === "verified") {
-                            handleClearFingerprintVerification();
-                            return;
-                          }
-                          handleVerifyCurrentFingerprint();
-                        }}
-                      >
-                        {contactTrustState?.status === "verified" ? (
-                          <ShieldCheck className="h-4 w-4" />
-                        ) : contactTrustState?.status === "changed" ? (
-                          <ShieldAlert className="h-4 w-4" />
-                        ) : (
-                          <ShieldQuestion className="h-4 w-4" />
+                        className="fixed inset-0 z-[90] cursor-default"
+                        onClick={() => setShowMobileHeaderMenu(false)}
+                      />
+                      <div className="themed-modal-surface absolute right-0 top-12 z-[100] w-56 rounded-[18px] border border-white/10 p-2 shadow-[0_24px_70px_rgba(2,8,23,0.32)]">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                          onClick={() => {
+                            setShowMobileHeaderMenu(false);
+                            onToggleSearch();
+                          }}
+                        >
+                          <Search className="h-4 w-4" />
+                          Search in chat
+                        </button>
+                        {!isGroupChat && (
+                          <button
+                            type="button"
+                            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
+                              contactTrustState?.status === "changed"
+                                ? "text-rose-200"
+                                : contactTrustState?.status === "verified"
+                                  ? "text-emerald-200"
+                                  : ""
+                            }`}
+                            onClick={() => {
+                              setShowMobileHeaderMenu(false);
+                              if (contactTrustState?.status === "verified") {
+                                handleClearFingerprintVerification();
+                                return;
+                              }
+                              handleVerifyCurrentFingerprint();
+                            }}
+                          >
+                            {contactTrustState?.status === "verified" ? (
+                              <ShieldCheck className="h-4 w-4" />
+                            ) : contactTrustState?.status === "changed" ? (
+                              <ShieldAlert className="h-4 w-4" />
+                            ) : (
+                              <ShieldQuestion className="h-4 w-4" />
+                            )}
+                            {contactTrustState?.status === "verified"
+                              ? "Verified secure chat"
+                              : "Verify security"}
+                          </button>
                         )}
-                        {contactTrustState?.status === "verified"
-                          ? "Verified secure chat"
-                          : "Verify security"}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
-                      onClick={() => {
-                        setShowMobileHeaderMenu(false);
-                        openScheduleModal("general");
-                      }}
-                    >
-                      <CalendarClock className="h-4 w-4" />
-                      Schedule message
-                    </button>
-                    <button
-                      type="button"
-                      className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
-                        !isPremiumUser ? "opacity-80" : ""
-                      }`}
-                      onClick={() => {
-                        setShowMobileHeaderMenu(false);
-                        openSummaryModal();
-                      }}
-                    >
-                      {isPremiumUser ? (
-                        <Sparkles className="h-4 w-4" />
-                      ) : (
-                        <Lock className="h-4 w-4" />
-                      )}
-                      AI summary
-                    </button>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
-                      onClick={() => {
-                        setShowMobileHeaderMenu(false);
-                        onToggleDetail();
-                      }}
-                    >
-                      <Info className="h-4 w-4" />
-                      Chat info
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-        </div>
-      </div>
-      {!isGroupChat && contactTrustState?.status === "changed" && (
-        <div className="border-b border-rose-400/15 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
-          This contact&apos;s security key has changed. Verify the new fingerprint before you share sensitive information.
-        </div>
-      )}
-      {isDecryptingMessages && (
-        <div className="border-b border-cyan-400/10 bg-cyan-400/6 px-4 py-2 text-xs text-cyan-100">
-          Decrypting secure messages in the background...
-        </div>
-      )}
-
-      <div className="chat-message-region">
-        <div className={`shrink-0 ${isMobile ? "px-3 pt-4" : "px-7 pt-8"}`}>
-          <div className={`${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}>
-          {pinnedMessages[0] && (
-            <div className="themed-page-card flex items-center justify-between gap-4 rounded-[22px] px-4 py-3">
-              <div className="min-w-0">
-                <p className="themed-section-label mb-1">Pinned message</p>
-                <p className="themed-title truncate text-sm font-medium">
-                  {pinnedMessages[0].content || pinnedMessages[0].replyPreview?.content || pinnedMessages[0].meta?.poll?.question || "Pinned message"}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="themed-action-neutral rounded-full px-3 py-1.5 text-xs"
-                onClick={() => setFocusedMessageId(String(pinnedMessages[0]._id || pinnedMessages[0].id))}
-              >
-                Jump
-              </button>
-            </div>
-          )}
-        </div>
-        </div>
-        <VirtualizedMessageList
-          ref={messageListRef}
-          isMobile={isMobile}
-          messages={filteredMessages}
-          renderMessageRow={renderMessageRow}
-        />
-        {hasPendingNewMessages && (
-          <button
-            type="button"
-            onClick={() => {
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                          onClick={() => {
+                            setShowMobileHeaderMenu(false);
+                            openScheduleModal("general");
+                          }}
+                        >
+                          <CalendarClock className="h-4 w-4" />
+                          Schedule message
+                        </button>
+                        <button
+                          type="button"
+                          className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
+                            !isPremiumUser ? "opacity-80" : ""
+                          }`}
+                          onClick={() => {
+                            setShowMobileHeaderMenu(false);
+                            openSummaryModal();
+                          }}
+                        >
+                          {isPremiumUser ? (
+                            <Sparkles className="h-4 w-4" />
+                          ) : (
+                            <Lock className="h-4 w-4" />
+                          )}
+                          AI summary
+                        </button>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                          onClick={() => {
+                            setShowMobileHeaderMenu(false);
+                            onToggleDetail();
+                          }}
+                        >
+                          <Info className="h-4 w-4" />
+                          Chat info
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            }
+          />
+        }
+        messageArea={
+          <MessageList
+            isMobile={isMobile}
+            pinnedMessage={pinnedMessages[0] || null}
+            onJumpToPinned={() =>
+              setFocusedMessageId(String(pinnedMessages[0]?._id || pinnedMessages[0]?.id))
+            }
+            error={messageLoadError}
+            loading={
+              Boolean(messagesLoadingByConversationKey?.[resolvedConversationKey]) &&
+              !filteredMessages.length
+            }
+            messages={filteredMessages}
+            renderMessageRow={renderMessageRow}
+            messageListRef={messageListRef}
+            typingLabel={typingLabel}
+            hasPendingNewMessages={hasPendingNewMessages}
+            isAtMessageBottom={isAtMessageBottom}
+            onJumpToLatest={() => {
               messageListRef.current?.scrollToBottom("smooth");
               setHasPendingNewMessages(false);
             }}
-            className="jump-to-latest-button rounded-full bg-cyan-400 px-4 py-2 text-xs font-semibold text-slate-950 shadow-[0_18px_40px_rgba(34,211,238,0.24)]"
-          >
-            {isAtMessageBottom ? "New messages" : "Jump to latest"}
-          </button>
-        )}
-      </div>
-
-      <div
-        ref={composerRef}
-        className={`chat-composer-shell ${
-          isMobile
-            ? "z-20 px-3 pt-3"
-            : "px-7 py-5"
-        }`}
-      >
-        <div
-          className={`relative mx-auto flex w-full max-w-5xl items-center ${
-            isMobile ? "min-h-[56px] gap-2" : "gap-3"
-          }`}
-        >
+            onRetry={retryLoadMessages}
+          />
+        }
+        composer={
+          <MessageComposer composerRef={composerRef} isMobile={isMobile}>
           {(replyingToMessage || editingMessageId) && (
             <div className={`themed-file-card absolute ${isMobile ? "-top-24 right-0" : "-top-20 right-16"} left-0 flex items-start justify-between gap-4 rounded-2xl px-4 py-3`}>
               <div className="min-w-0">
@@ -4214,8 +4121,9 @@ function Chat({
           >
             <SendHorizonal className="h-4 w-4" />
           </button>
-        </div>
-      </div>
+          </MessageComposer>
+        }
+      />
 
       <Suspense fallback={null}>
         <CreatePollModal
@@ -4344,7 +4252,7 @@ function Chat({
           onClose={() => setShowPremiumModal(false)}
         />
       </Suspense>
-    </div>
+    </>
   );
 }
 

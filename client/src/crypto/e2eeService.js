@@ -242,8 +242,46 @@ const toCachedMessageShape = (message) => ({
   decryptedContent: message?.decryptedContent ?? "",
   isEncrypted: Boolean(message?.isEncrypted),
   decryptionError: Boolean(message?.decryptionError),
+  decryptionPending: Boolean(message?.decryptionPending),
   meta: message?.meta || null,
 });
+
+const TRANSIENT_DECRYPTION_ERROR_MESSAGES = new Set([
+  "No decryptable key found for direct message.",
+  "No decryptable key found for group message.",
+  "No decryptable key found.",
+  "Encryption keys are not ready on this device.",
+]);
+
+const isTransientDecryptError = (error) =>
+  TRANSIENT_DECRYPTION_ERROR_MESSAGES.has(String(error?.message || "").trim());
+
+const buildPendingDecryptionShape = (message) =>
+  toCachedMessageShape({
+    ...message,
+    content:
+      sanitizeEncryptedMessageText(message?.content, message) ||
+      (message?.messageType === "text" ? "" : message?.content),
+    decryptedContent: "",
+    decryptionError: false,
+    decryptionPending: true,
+    isEncrypted: true,
+  });
+
+const buildFailedDecryptionShape = (message) =>
+  toCachedMessageShape({
+    ...message,
+    content:
+      sanitizeEncryptedMessageText(message?.content, message) ||
+      (message?.messageType === "text" ? "" : message?.content),
+    decryptedContent:
+      sanitizeEncryptedMessageText(message?.decryptedContent, message) ||
+      sanitizeEncryptedMessageText(message?.content, message) ||
+      "",
+    decryptionError: true,
+    decryptionPending: false,
+    isEncrypted: true,
+  });
 
 const buildDirectEnvelopeForRawKey = async ({
   rawKey,
@@ -1053,6 +1091,7 @@ const buildDecryptedMessageShape = ({ message, plaintext }) => {
       decryptedContent: plaintext,
       isEncrypted: true,
       decryptionError: false,
+      decryptionPending: false,
     });
   }
 
@@ -1062,6 +1101,7 @@ const buildDecryptedMessageShape = ({ message, plaintext }) => {
       decryptedContent: plaintext,
       isEncrypted: true,
       decryptionError: false,
+      decryptionPending: false,
     });
   }
 
@@ -1071,6 +1111,7 @@ const buildDecryptedMessageShape = ({ message, plaintext }) => {
     decryptedContent: plaintext,
     isEncrypted: true,
     decryptionError: false,
+    decryptionPending: false,
   });
 };
 
@@ -1083,7 +1124,7 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   const cachedMessage = cacheKey ? messageDecryptCache.get(cacheKey) : null;
 
   if (cachedMessage) {
-    if (cachedMessage.decryptionError) {
+    if (cachedMessage.decryptionError || cachedMessage.decryptionPending) {
       messageDecryptCache.delete(cacheKey);
     } else {
       return {
@@ -1097,7 +1138,10 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
     try {
       const persistedMessage = await getStoredDecryptedMessage(cacheKey);
       if (persistedMessage) {
-        if (!persistedMessage.decryptionError) {
+        if (
+          !persistedMessage.decryptionError &&
+          !persistedMessage.decryptionPending
+        ) {
           messageDecryptCache.set(cacheKey, persistedMessage);
           trimMessageDecryptCache();
           return {
@@ -1176,17 +1220,11 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
       }
 
       console.error("E2EE decrypt failed:", error);
-      return toCachedMessageShape({
-        content:
-          sanitizeEncryptedMessageText(message.content, message) ||
-          (message.messageType === "text" ? "" : message.content),
-        decryptedContent:
-          sanitizeEncryptedMessageText(message.decryptedContent, message) ||
-          sanitizeEncryptedMessageText(message.content, message) ||
-          "",
-        decryptionError: true,
-        isEncrypted: true,
-      });
+      if (isTransientDecryptError(error)) {
+        return buildPendingDecryptionShape(message);
+      }
+
+      return buildFailedDecryptionShape(message);
     }
   })();
 
@@ -1197,7 +1235,11 @@ export const decryptIncomingMessage = async ({ message, currentUserId }) => {
   try {
     const resolvedMessage = await decryptPromise;
 
-    if (cacheKey && !resolvedMessage.decryptionError) {
+    if (
+      cacheKey &&
+      !resolvedMessage.decryptionError &&
+      !resolvedMessage.decryptionPending
+    ) {
       messageDecryptCache.set(cacheKey, resolvedMessage);
       trimMessageDecryptCache();
       void setStoredDecryptedMessage(cacheKey, resolvedMessage);
@@ -1253,12 +1295,17 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
           (cacheKey ? persistedEntries[cacheKey] : null);
 
         if (cachedValue) {
-          if (!cachedValue.decryptionError && cacheKey && !messageDecryptCache.has(cacheKey)) {
+          if (
+            !cachedValue.decryptionError &&
+            !cachedValue.decryptionPending &&
+            cacheKey &&
+            !messageDecryptCache.has(cacheKey)
+          ) {
             messageDecryptCache.set(cacheKey, cachedValue);
             trimMessageDecryptCache();
           }
 
-          if (!cachedValue.decryptionError) {
+          if (!cachedValue.decryptionError && !cachedValue.decryptionPending) {
             return {
               type: "resolved",
               message: {
@@ -1274,15 +1321,7 @@ export const decryptIncomingMessages = async ({ messages, currentUserId }) => {
             type: "resolved",
             message: {
               ...message,
-              content:
-                sanitizeEncryptedMessageText(message.content, message) ||
-                (message.messageType === "text" ? "" : message.content),
-              decryptedContent:
-                sanitizeEncryptedMessageText(message.decryptedContent, message) ||
-                sanitizeEncryptedMessageText(message.content, message) ||
-                "",
-              decryptionError: true,
-              isEncrypted: true,
+              ...buildPendingDecryptionShape(message),
             },
           };
         }
@@ -1407,7 +1446,13 @@ export const hydrateMessagesFromCache = async ({ messages }) => {
       (cacheKey && messageDecryptCache.get(cacheKey)) ||
       (cacheKey ? persistedEntries[cacheKey] : null);
 
-    if (!cachedValue || cachedValue.decryptionError) return message;
+    if (
+      !cachedValue ||
+      cachedValue.decryptionError ||
+      cachedValue.decryptionPending
+    ) {
+      return message;
+    }
 
     if (cacheKey && !messageDecryptCache.has(cacheKey)) {
       messageDecryptCache.set(cacheKey, cachedValue);

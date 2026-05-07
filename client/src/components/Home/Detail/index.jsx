@@ -364,7 +364,6 @@ function Detail({ onClose, activeUsers = [], callState }) {
       const attachmentMessages = safeSelectedChatMessages.filter(
         // Normalize defensively in case an older state shape is still around.
         // This keeps Detail from crashing while the rest of the app repairs state.
-        // eslint-disable-next-line no-extra-parens
         (message) => message?.fileUrl
       );
       const normalizedAttachmentMessages = Array.isArray(attachmentMessages)

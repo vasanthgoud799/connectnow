@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { Navigate, Route,Routes } from "react-router-dom";
 import { useAppStore } from "./store";

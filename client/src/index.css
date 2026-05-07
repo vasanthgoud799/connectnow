@@ -628,6 +628,7 @@
 .chat-composer-shell {
   flex-shrink: 0;
   position: relative;
+  margin-top: auto;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   background:
     linear-gradient(180deg, rgba(7, 15, 28, 0.82), rgba(7, 15, 28, 0.96)),
@@ -638,8 +639,8 @@
 
 @media (max-width: 768px) {
   .chat-shell {
-    height: var(--app-viewport-height, 100dvh);
-    max-height: var(--app-viewport-height, 100dvh);
+    height: var(--app-layout-height, var(--app-viewport-height, 100dvh));
+    max-height: var(--app-layout-height, var(--app-viewport-height, 100dvh));
   }
 
   .chat-composer-shell {
@@ -647,6 +648,10 @@
     position: sticky;
     bottom: 0;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .chat-message-scroll {
+    scroll-padding-bottom: calc(var(--chat-composer-height, 84px) + 1rem);
   }
 }
 
