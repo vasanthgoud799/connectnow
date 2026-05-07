@@ -3,6 +3,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAppStore } from "@/store";
 import { ChevronDown, ChevronUp, Search as SearchIcon, Sparkles, X } from "lucide-react";
 import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
+import StatePanel from "@/components/ui/StatePanel";
 
 function highlightMatch(text, query) {
   if (!query.trim()) return text;
@@ -147,17 +148,19 @@ function Search({ onClose }) {
 
       <div className="no-scrollbar flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1">
         {!searchText.trim() ? (
-          <div className="themed-page-card flex h-full flex-col items-center justify-center rounded-[28px] border-dashed px-6 text-center">
-            <Sparkles className="h-10 w-10 text-cyan-200/70" />
-            <p className="themed-title mt-4 font-medium">Search inside this conversation</p>
-            <p className="themed-subtitle mt-2 text-sm leading-6">
-              Results will appear here as you type. This keeps search focused and fast.
-            </p>
-          </div>
+          <StatePanel
+            icon={Sparkles}
+            title="Search inside this conversation"
+            description="Results will appear here as you type. This keeps search focused and fast."
+            dashed
+            className="h-full rounded-[28px] px-6"
+          />
         ) : results.length === 0 ? (
-          <div className="themed-page-card themed-subtitle rounded-[24px] px-4 py-6 text-center">
-            No matching messages found.
-          </div>
+          <StatePanel
+            title="No matching messages found"
+            description="Try another word, phrase, or file name from this conversation."
+            className="rounded-[24px]"
+          />
         ) : (
           <div className="space-y-3">
             {results.map((message, index) => (

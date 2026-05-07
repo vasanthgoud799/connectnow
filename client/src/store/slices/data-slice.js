@@ -54,6 +54,10 @@ export const createDataSlice = (set, get) => ({
     set({ securitySnapshotLoaded: false, securitySnapshotLoading: false }),
   setActiveHomeSection: (activeHomeSection) => set({ activeHomeSection }),
   setMobileChatView: (mobileChatView) => set({ mobileChatView }),
+  setSessions: (updater) =>
+    set((state) => ({
+      sessions: typeof updater === "function" ? updater(state.sessions || []) : updater,
+    })),
 
   fetchChatSummaries: async ({ force = false, currentUserId } = {}) => {
     const state = get();

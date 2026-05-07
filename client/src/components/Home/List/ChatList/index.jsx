@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import VirtualStack from "@/components/ui/VirtualStack";
 import RouteLoader from "@/components/ui/RouteLoader";
+import StatePanel from "@/components/ui/StatePanel";
 import ChatListItem from "./ChatListItem";
 import { useAppStore } from "@/store";
 import { apiClient } from "@/lib/api-client.js";
@@ -44,6 +45,7 @@ function ChatList({ onOpenChat }) {
     chatSummariesLoading,
     setSelectedChatData,
     setSelectedConversationKey,
+    setChatSummaries,
     setUnreadCount,
     selectedConversationKey,
     updateChatPreference,
@@ -204,21 +206,21 @@ function ChatList({ onOpenChat }) {
 
         <div className="pr-1 md:min-h-0 md:flex-1">
           {!chatSummariesLoaded && chatSummariesLoading ? (
-            <div className="themed-panel-soft themed-subtitle rounded-[24px] px-4 py-8 text-center">
-              Loading conversations...
-            </div>
+            <StatePanel
+              title="Loading conversations..."
+              description="Preparing your recent chats, unread counts, and pinned threads."
+            />
           ) : filteredChats.length === 0 ? (
-            <div className="themed-panel-soft rounded-[24px] border-dashed px-4 py-8 text-center ">
-              <MessageSquareMore className="mx-auto h-10 w-10 text-slate-500" />
-              <p className="themed-title mt-3">
-                {searchText.trim() ? "No chats match your search" : "No chats yet"}
-              </p>
-              <p className="themed-subtitle mt-1 text-sm">
-                {searchText.trim()
+            <StatePanel
+              icon={MessageSquareMore}
+              title={searchText.trim() ? "No chats match your search" : "No chats yet"}
+              description={
+                searchText.trim()
                   ? "Try a different name, email, group, or message keyword."
-                  : "Add a contact to start your first conversation."}
-              </p>
-            </div>
+                  : "Add a contact to start your first conversation."
+              }
+              dashed
+            />
           ) : (
             <VirtualStack
               className="h-[calc(100dvh-22rem)] min-h-[260px] overflow-y-auto no-scrollbar scroll-smooth md:h-full"

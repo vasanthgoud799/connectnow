@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, LogOut, PencilLine, Search, UserCircle2, X } from "lucide-react";
 
@@ -20,7 +20,7 @@ function UserInfo({
 
   return (
     <>
-    <header className="themed-topbar border-b px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-6">
+    <header className="themed-topbar border-b px-4 py-3 pt-[max(0.9rem,env(safe-area-inset-top))] md:px-6 md:py-4">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <img
@@ -90,7 +90,7 @@ function UserInfo({
             className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm"
             onClick={() => setIsProfileMenuOpen(false)}
           />
-          <div className="themed-modal-surface fixed inset-x-4 top-20 z-50 rounded-[28px] border border-white/10 p-4 shadow-[0_24px_70px_rgba(2,8,23,0.32)] md:hidden">
+          <div className="themed-modal-surface fixed inset-x-4 top-[calc(env(safe-area-inset-top)+4.5rem)] z-50 rounded-[28px] border border-white/10 p-4 shadow-[0_24px_70px_rgba(2,8,23,0.32)] md:hidden">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 <img

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client.js";
@@ -71,6 +71,7 @@ function AddUser({ onFriendAdded, onClose }) {
           )
         );
         toast.success("Request sent");
+        onFriendAdded?.(contactId);
       }
     } catch (err) {
       console.error("Error sending friend request:", err);
@@ -83,8 +84,8 @@ function AddUser({ onFriendAdded, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,760px)] md:rounded-[32px]">
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5 md:px-6">
+      <div className="themed-modal-surface themed-chat-canvas flex h-[var(--app-viewport-height,88vh)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,760px)] md:rounded-[32px]">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-[max(1.1rem,env(safe-area-inset-top))] md:px-6">
           <div>
             <p className="themed-accent-text text-xs uppercase tracking-[0.28em]">
               New contact
@@ -102,7 +103,7 @@ function AddUser({ onFriendAdded, onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 md:p-6">
+        <div className="flex-1 overflow-y-auto p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:p-6">
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
               <Search className="themed-subtitle pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" />

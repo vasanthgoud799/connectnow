@@ -123,10 +123,10 @@ function CreateGroup({ onClose, onCreated }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface animate-in fade-in zoom-in-95 duration-200 flex h-[92dvh] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
+      <div className="themed-modal-surface themed-chat-canvas animate-in fade-in zoom-in-95 duration-200 flex h-[var(--app-viewport-height,92dvh)] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-5 md:px-6">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-[max(1.1rem,env(safe-area-inset-top))] md:px-6">
           <div>
             <p className="themed-accent-text text-xs uppercase tracking-[0.28em]">
               New group
@@ -314,7 +314,7 @@ function CreateGroup({ onClose, onCreated }) {
           </div>
         </div>
 
-        <div className="border-t border-white/10 px-4 py-4 md:px-6">
+        <div className="border-t border-white/10 px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:px-6 md:pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Button
               type="button"

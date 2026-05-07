@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { AnimatePresence, motion, useScroll, useSpring } from "framer-motion";
 import {
@@ -11,12 +11,9 @@ import {
   Languages,
   Lock,
   MessageSquareText,
-  Mic,
   PhoneCall,
-  Search,
   ShieldCheck,
   Sparkles,
-  Star,
   Video,
   Wand2,
   Waves,
@@ -159,7 +156,7 @@ function FeatureCard({ icon: Icon, title, description }) {
 function TestimonialCard({ quote, name, role }) {
   return (
     <motion.div whileHover={{ y: -5 }} className="landing-panel rounded-[28px] p-6">
-      <p className="text-base leading-8 text-slate-200">"{quote}"</p>
+      <p className="text-base leading-8 text-slate-200">&ldquo;{quote}&rdquo;</p>
       <div className="mt-6">
         <p className="font-['Space_Grotesk'] text-xl font-semibold text-white">
           {name}
@@ -261,7 +258,7 @@ function Auth() {
   };
 
   return (
-    <div className="auth-premium-shell relative min-h-screen overflow-hidden bg-[#030712] text-white">
+    <div className="auth-premium-shell relative min-h-[100dvh] overflow-hidden bg-[#030712] text-white">
       <motion.div
         style={{ scaleX }}
         className="fixed left-0 top-0 z-50 h-1 w-full origin-left bg-gradient-to-r from-[#8b5cf6] via-[#ec4899] to-[#22d3ee]"
@@ -534,7 +531,7 @@ function Auth() {
                 AI that thinks with you
               </h2>
               <p className="mt-4 max-w-2xl text-base leading-8 text-slate-300 md:text-lg">
-                ConnectNow's AI features live where users actually need them: inside the composer, message actions, and long conversation catch-up moments.
+                ConnectNow&apos;s AI features live where users actually need them: inside the composer, message actions, and long conversation catch-up moments.
               </p>
 
               <Button

@@ -441,7 +441,6 @@ function Detail({ onClose, activeUsers = [], callState }) {
     formData.append("stableMedia", "true");
     const response = await apiClient.post(UPLOAD_FILE_ROUTE, formData, {
       withCredentials: true,
-      headers: { "Content-Type": "multipart/form-data" },
     });
     return response.data;
   };
@@ -1135,10 +1134,10 @@ function Detail({ onClose, activeUsers = [], callState }) {
           </>
         ) : (
           <>
-            <div className="themed-page-card rounded-[28px] p-5">
-              <div className="flex flex-col items-center justify-center">
-                <img
-                  src={selectedChatData.image || "./avatar.png"}
+              <div className="themed-page-card rounded-[28px] p-5">
+                <div className="flex flex-col items-center justify-center">
+                  <img
+                    src={selectedChatData.image || "./avatar.png"}
                   alt="Profile"
                   className="h-[110px] w-[110px] rounded-[28px] object-cover"
                 />
@@ -1189,12 +1188,12 @@ function Detail({ onClose, activeUsers = [], callState }) {
               </p>
             </div>
 
-            <div className="themed-page-card rounded-[28px] p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <span className="themed-title text-xl font-semibold">Security verification</span>
-                  <p className="themed-subtitle mt-2 text-sm leading-7">
-                    Verify key helps confirm that your chat and calls are secure with this contact.
+              <div className="themed-page-card rounded-[28px] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <span className="themed-title text-xl font-semibold">Security verification</span>
+                    <p className="themed-subtitle mt-2 text-sm leading-7">
+                      Verify key helps confirm that your chat and calls are secure with this contact.
                   </p>
                 </div>
                 <Button

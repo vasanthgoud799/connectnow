@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  FileText,
   Image,
   MessageSquare,
   Search,
@@ -10,6 +9,7 @@ import {
 
 import { useAppStore } from "@/store";
 import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
+import StatePanel from "@/components/ui/StatePanel";
 
 const SEARCH_TABS = [
   { id: "all", label: "All" },
@@ -223,7 +223,7 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
 
   return (
     <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-md md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[var(--app-viewport-height,88vh)] w-full max-w-5xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_35px_90px_rgba(2,8,23,0.28)] md:h-[min(82vh,760px)] md:rounded-[32px]">
+      <div className="themed-modal-surface themed-chat-canvas flex h-[var(--app-viewport-height,88vh)] w-full max-w-5xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_35px_90px_rgba(2,8,23,0.28)] md:h-[min(82vh,760px)] md:rounded-[32px]">
         <MobileSafeHeader className="md:rounded-t-[32px]">
           <div>
             <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">
@@ -358,9 +358,11 @@ function GlobalSearchModal({ isOpen, onClose, onOpenConversation }) {
                 );
               })
             ) : (
-              <div className="themed-page-card flex flex-1 items-center justify-center rounded-[28px] text-sm">
-                No matches found.
-              </div>
+              <StatePanel
+                title="No matches found"
+                description="Try a different name, group, email, or message keyword."
+                className="flex-1 rounded-[28px]"
+              />
             )}
           </div>
         )}

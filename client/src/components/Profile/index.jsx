@@ -314,8 +314,8 @@ function Profile() {
   };
 
   return (
-    <div className="themed-shell flex min-h-screen items-center justify-center px-4 py-8 ">
-      <div className="themed-panel w-full max-w-6xl   rounded-[36px]  shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
+    <div className="themed-shell flex min-h-[100dvh] items-start justify-center overflow-y-auto px-4 py-6 md:items-center md:py-8">
+      <div className="themed-panel w-full max-w-6xl rounded-[36px] shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
         <div className="grid lg:grid-cols-[0.9fr_1.1fr] ">
           <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r lg:p-10 ">
             <div className="flex items-center justify-between">

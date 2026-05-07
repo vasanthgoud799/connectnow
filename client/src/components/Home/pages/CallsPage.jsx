@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { connect } from "react-redux";
 import {
+  History,
   Phone,
   PhoneCall,
   PhoneIncoming,
@@ -13,6 +14,8 @@ import {
 import { toast } from "sonner";
 
 import { apiClient } from "@/lib/api-client";
+import PageScaffold from "@/components/ui/PageScaffold";
+import StatePanel from "@/components/ui/StatePanel";
 import {
   CALLS_LOG_ROUTE,
 } from "@/utils/constants";
@@ -104,7 +107,7 @@ function CallContactPicker({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-page-card flex h-[82vh] w-full max-w-2xl flex-col rounded-t-[30px] p-4 md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
+      <div className="themed-modal-surface flex h-[var(--app-viewport-height,82vh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
             <p className="themed-title text-xl font-semibold">Start a call</p>
@@ -318,7 +321,27 @@ function CallsPage({ activeUsers = [], callState }) {
   };
 
   return (
-    <div className="scrollbar-hide flex min-h-0 flex-1 flex-col overflow-y-auto bg-transparent px-4 pb-24 pt-4 md:overflow-hidden md:px-6 md:pb-6 md:pt-6">
+    <PageScaffold
+      header={
+        <div>
+          <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">Calls</p>
+          <p className="themed-subtitle mt-1 text-sm">
+            Review recent calls, redial quickly, and launch new audio or video conversations.
+          </p>
+        </div>
+      }
+      actions={
+        <button
+          type="button"
+          onClick={openCallPicker}
+          className="themed-panel-soft flex h-12 min-w-12 shrink-0 items-center justify-center rounded-[22px] px-4 text-cyan-300 transition hover:text-white"
+          aria-label="Start call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
+      }
+      bodyClassName="flex min-h-0 flex-col overflow-hidden"
+    >
       <div className="mb-5 flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -330,28 +353,24 @@ function CallsPage({ activeUsers = [], callState }) {
             className="themed-input h-12 w-full rounded-[22px] pl-11"
           />
         </div>
-        <button
-          type="button"
-          onClick={openCallPicker}
-          className="themed-panel-soft flex h-12 min-w-12 shrink-0 items-center justify-center rounded-[22px] px-4 text-cyan-300 transition hover:text-white"
-        >
-          <Phone className="h-5 w-5" />
-        </button>
       </div>
 
       <div className="mb-5">
-        <p className="themed-title text-xl font-semibold">Recent</p>
+        <div className="inline-flex items-center gap-2">
+          <History className="h-4 w-4 text-cyan-200" />
+          <p className="themed-title text-xl font-semibold">Recent</p>
+        </div>
       </div>
 
       <div className={`scrollbar-hide space-y-1 pb-2 pr-1 ${isMobile ? "" : "min-h-0 flex-1 overflow-y-auto"}`}>
         {!callsLoaded && callsLoading ? (
-          <div className="themed-page-card themed-subtitle rounded-[24px] p-5">
-            Loading calls...
-          </div>
+          <StatePanel title="Loading calls..." description="Pulling your latest call history and contact availability." />
         ) : filteredCalls.length === 0 ? (
-          <div className="themed-page-card themed-subtitle rounded-[24px] border-dashed p-5">
-            No recent calls yet.
-          </div>
+          <StatePanel
+            title="No recent calls yet"
+            description="Start an audio or video conversation and your history will appear here."
+            dashed
+          />
         ) : (
           filteredCalls.map((call) => {
             const isCaller = String(call.caller?._id || call.caller?.id) === String(userInfo?.id);
@@ -417,7 +436,7 @@ function CallsPage({ activeUsers = [], callState }) {
           Loading contacts...
         </div>
       )}
-    </div>
+    </PageScaffold>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Crown,
@@ -24,6 +24,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import RouteLoader from "@/components/ui/RouteLoader";
+import PageScaffold from "@/components/ui/PageScaffold";
+import StatePanel from "@/components/ui/StatePanel";
 import { toast } from "sonner";
 import {
   getBrowserNotificationPermission,
@@ -43,6 +45,7 @@ function SettingsPage() {
     trustedDevices,
     securityEvents,
     adminDashboard,
+    setSessions,
     fetchSecuritySnapshot,
     browserNotificationsEnabled,
     setBrowserNotificationsEnabled,
@@ -224,9 +227,20 @@ function SettingsPage() {
   };
 
   return (
- <div className="flex min-h-0 flex-1 flex-col px-6 pb-5 pt-4 overflow-y-auto no-scrollbar">
-      <div className="themed-page-card rounded-[28px] p-4 md:p-5">
-        <div className="grid gap-4 lg:grid-cols-2">
+    <>
+      <PageScaffold
+        header={
+          <div>
+            <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">Settings</p>
+            <p className="themed-subtitle mt-1 text-sm">
+              Manage notifications, security, AI preferences, trusted devices, and account controls in one place.
+            </p>
+          </div>
+        }
+        bodyClassName="overflow-y-auto no-scrollbar"
+      >
+        <div className="themed-page-card rounded-[28px] p-4 md:p-5">
+          <div className="grid gap-4 lg:grid-cols-2">
         <button
           type="button"
           onClick={() => navigate("/profile")}
@@ -452,7 +466,13 @@ function SettingsPage() {
                 </div>
               ))
             ) : (
-              <p className="themed-subtitle text-sm">No recent security events.</p>
+              <StatePanel
+                title="No recent security events"
+                description="Important account activity will appear here when available."
+                dashed
+                className="bg-transparent px-0 py-2 text-left"
+                center={false}
+              />
             )}
           </div>
         </div>
@@ -545,8 +565,9 @@ function SettingsPage() {
             </div>
           </div>
         </div>
+          </div>
         </div>
-      </div>
+      </PageScaffold>
 
       <Suspense fallback={<RouteLoader message="Loading premium options..." />}>
         <PremiumUpgradeModal
@@ -554,7 +575,7 @@ function SettingsPage() {
           onClose={() => setShowPremiumModal(false)}
         />
       </Suspense>
-    </div>
+    </>
   );
 }
 

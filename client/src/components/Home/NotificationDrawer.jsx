@@ -1,5 +1,6 @@
-import React from "react";
 import { Bell, MessageSquare, UserPlus, X } from "lucide-react";
+import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
+import StatePanel from "@/components/ui/StatePanel";
 
 function NotificationDrawer({
   isOpen,
@@ -34,11 +35,11 @@ function NotificationDrawer({
   return (
     <div className="fixed inset-0 z-[115] bg-slate-950/45 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="themed-modal-surface absolute right-4 top-20 flex h-[min(78vh,720px)] w-[min(420px,calc(100vw-2rem))] flex-col rounded-[28px] p-5 shadow-[0_28px_80px_rgba(2,8,23,0.28)]"
+        className="themed-modal-surface themed-chat-canvas absolute inset-x-0 bottom-0 top-auto flex h-[min(88dvh,760px)] w-full flex-col overflow-hidden rounded-t-[28px] p-0 shadow-[0_28px_80px_rgba(2,8,23,0.28)] md:inset-auto md:right-4 md:top-20 md:h-[min(78vh,720px)] md:w-[min(420px,calc(100vw-2rem))] md:rounded-[28px]"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <div>
+        <MobileSafeHeader className="md:rounded-t-[28px]">
+          <div className="min-w-0">
             <p className="themed-title font-['Space_Grotesk'] text-xl font-semibold">
               Notifications
             </p>
@@ -46,7 +47,7 @@ function NotificationDrawer({
               {unreadCount} unread notification{unreadCount === 1 ? "" : "s"}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2">
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -64,9 +65,9 @@ function NotificationDrawer({
               <X className="h-4 w-4" />
             </button>
           </div>
-        </div>
+        </MobileSafeHeader>
 
-        <div className="scrollbar-hide flex-1 space-y-5 overflow-y-auto pr-1">
+        <div className="scrollbar-hide flex-1 space-y-5 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-4 pr-1 md:px-5 md:pb-5">
           {actionableNotifications.length > 0 && (
             <div>
               <div className="mb-3 flex items-center justify-between">
@@ -232,13 +233,12 @@ function NotificationDrawer({
               </div>
             </div>
           ) : (
-            <div className="themed-page-card flex h-full flex-col items-center justify-center rounded-[24px] px-5 text-center">
-              <Bell className="mb-3 h-10 w-10 text-slate-500" />
-              <p className="themed-title font-medium">No notifications yet</p>
-              <p className="themed-subtitle mt-2 text-sm">
-                New messages, mentions, and updates will appear here.
-              </p>
-            </div>
+            <StatePanel
+              icon={Bell}
+              title="No notifications yet"
+              description="New messages, mentions, and updates will appear here."
+              className="h-full rounded-[24px] px-5"
+            />
           )}
         </div>
       </div>

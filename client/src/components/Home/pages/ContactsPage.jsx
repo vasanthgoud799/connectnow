@@ -2,6 +2,8 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Gift, Search, UserPlus } from "lucide-react";
 
 import RouteLoader from "@/components/ui/RouteLoader";
+import PageScaffold from "@/components/ui/PageScaffold";
+import StatePanel from "@/components/ui/StatePanel";
 import { useAppStore } from "@/store";
 
 const AddUser = lazy(() => import("../List/ChatList/AddUser"));
@@ -44,8 +46,23 @@ function ContactsPage({ onOpenChat }) {
   const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => index);
 
   return (
-    <div className="scrollbar-hide flex min-h-0 flex-1 flex-col overflow-y-auto bg-transparent px-4 pb-24 pt-4 md:overflow-hidden md:px-6 md:pb-5">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+    <>
+      <PageScaffold
+        header={
+          <div>
+            <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">
+              Your contacts
+            </p>
+            <p className="themed-subtitle mt-1 text-sm">
+              Open a direct conversation, manage friend connections, and keep birthday reminders in view.
+            </p>
+          </div>
+        }
+        className="bg-transparent"
+        bodyClassName="flex min-h-0 flex-col overflow-hidden"
+        footerClassName="hidden"
+      >
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="themed-input flex flex-1 items-center rounded-[22px] px-4 py-3 border border-violet-900">
           <Search className="themed-subtitle h-4 w-4" />
           <input
@@ -70,14 +87,11 @@ function ContactsPage({ onOpenChat }) {
         {!contactsLoaded && contactsLoading ? (
           <>
             <div className="md:col-span-2 xl:col-span-3 2xl:col-span-4">
-              <div className="themed-panel-soft rounded-[24px] px-5 py-4 text-center">
-                <p className="themed-title font-['Space_Grotesk'] text-lg font-semibold">
-                  Loading contacts...
-                </p>
-                <p className="themed-subtitle mt-1 text-sm">
-                  Pulling your secure contact list and presence details.
-                </p>
-              </div>
+              <StatePanel
+                title="Loading contacts..."
+                description="Pulling your secure contact list and presence details."
+                className="rounded-[24px]"
+              />
             </div>
             {loadingPlaceholders.map((placeholder) => (
               <div
@@ -99,8 +113,16 @@ function ContactsPage({ onOpenChat }) {
             ))}
           </>
         ) : filteredContacts.length === 0 ? (
-          <div className="themed-panel-soft themed-subtitle rounded-[24px] border-dashed p-5">
-            No contacts found.
+          <div className="md:col-span-2 xl:col-span-3 2xl:col-span-4">
+            <StatePanel
+              title={searchText.trim() ? "No contacts found" : "No contacts yet"}
+              description={
+                searchText.trim()
+                  ? "Try a different name or email to find the right person."
+                  : "Add a contact to start your first direct conversation."
+              }
+              dashed
+            />
           </div>
         ) : (
           filteredContacts.map((contact) => {
@@ -151,7 +173,8 @@ function ContactsPage({ onOpenChat }) {
             </button>
           )})
         )}
-      </div>
+        </div>
+      </PageScaffold>
 
       {showAddUser && (
         <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
@@ -164,10 +187,10 @@ function ContactsPage({ onOpenChat }) {
                 setShowAddUser(false);
               }}
               onClose={() => setShowAddUser(false)}
-          />
+            />
         </Suspense>
       )}
-    </div>
+    </>
   );
 }
 
