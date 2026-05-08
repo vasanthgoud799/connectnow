@@ -229,18 +229,9 @@ function SettingsPage() {
   return (
     <>
       <PageScaffold
-        header={
-          <div>
-            <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">Settings</p>
-            <p className="themed-subtitle mt-1 text-sm">
-              Manage notifications, security, AI preferences, trusted devices, and account controls in one place.
-            </p>
-          </div>
-        }
         bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))] pr-1"
       >
-        <div className="themed-page-card rounded-[28px] p-4 md:p-5">
-          <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
         <button
           type="button"
           onClick={() => navigate("/profile")}
@@ -565,7 +556,6 @@ function SettingsPage() {
             </div>
           </div>
         </div>
-          </div>
         </div>
       </PageScaffold>
 

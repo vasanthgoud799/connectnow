@@ -314,25 +314,7 @@ function CallsPage({ activeUsers = [], callState }) {
 
   return (
     <PageScaffold
-      header={
-        <div>
-          <p className="themed-title font-['Space_Grotesk'] text-2xl font-semibold">Calls</p>
-          <p className="themed-subtitle mt-1 text-sm">
-            Review recent calls, redial quickly, and launch new audio or video conversations.
-          </p>
-        </div>
-      }
-      actions={
-        <button
-          type="button"
-          onClick={openCallPicker}
-          className="themed-panel-soft flex h-12 min-w-12 shrink-0 items-center justify-center rounded-[22px] px-4 text-cyan-300 transition hover:text-white"
-          aria-label="Start call"
-        >
-          <Phone className="h-5 w-5" />
-        </button>
-      }
-      bodyClassName="flex min-h-0 flex-col overflow-hidden"
+      bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
     >
       <div className="mb-5 flex items-center gap-3">
         <div className="relative flex-1">
@@ -345,6 +327,14 @@ function CallsPage({ activeUsers = [], callState }) {
             className="themed-input h-12 w-full rounded-[22px] pl-11"
           />
         </div>
+        <button
+          type="button"
+          onClick={openCallPicker}
+          className="themed-panel-soft flex h-12 min-w-12 shrink-0 items-center justify-center rounded-[22px] px-4 text-cyan-300 transition hover:text-white"
+          aria-label="Start call"
+        >
+          <Phone className="h-5 w-5" />
+        </button>
       </div>
 
       <div className="mb-5">
@@ -354,7 +344,7 @@ function CallsPage({ activeUsers = [], callState }) {
         </div>
       </div>
 
-      <div className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))] pr-1">
+      <div className="scrollbar-hide space-y-1 overflow-x-hidden pr-1">
         {!callsLoaded && callsLoading ? (
           <StatePanel title="Loading calls..." description="Pulling your latest call history and contact availability." />
         ) : filteredCalls.length === 0 ? (
