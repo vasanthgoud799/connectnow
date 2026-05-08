@@ -67,15 +67,15 @@ function MessageList({
             messages={messages}
             renderMessageRow={renderMessageRow}
           />
-          <TypingIndicator label={typingLabel} />
-          {hasPendingNewMessages ? (
-            <NewMessagesIndicator
-              isAtBottom={isAtMessageBottom}
-              onClick={onJumpToLatest}
-            />
-          ) : null}
         </>
       )}
+      {!error ? <TypingIndicator label={typingLabel} /> : null}
+      {!error && hasPendingNewMessages ? (
+        <NewMessagesIndicator
+          isAtBottom={isAtMessageBottom}
+          onClick={onJumpToLatest}
+        />
+      ) : null}
     </div>
   );
 }

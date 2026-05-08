@@ -25,17 +25,20 @@ const updateCachedMessages = (messagesByConversationKey = {}, updater) =>
     ])
   );
 
-const getConversationKeyForSelection = (chatSummaries = [], selectedChatData, fallbackKey) => {
+const getConversationKeyForSelection = (chatSummaries = [], selectedChatData, currentUserId) => {
   const selectedChatId = selectedChatData?._id || selectedChatData?.id;
+  if (!selectedChatData || !selectedChatId) return undefined;
+
+  if (selectedChatData?.isGroup) {
+    return selectedChatData?.conversationKey || `group:${selectedChatId}`;
+  }
+
   return (
     chatSummaries.find((chat) => {
-      if (selectedChatData?.isGroup) {
-        return chat.conversationKey === selectedChatData?.conversationKey;
-      }
-
       const participantId = chat.participant?._id || chat.participant?.id;
       return String(participantId) === String(selectedChatId);
-    })?.conversationKey || fallbackKey
+    })?.conversationKey ||
+    (currentUserId ? [String(currentUserId), String(selectedChatId)].sort().join(":") : undefined)
   );
 };
 
@@ -61,7 +64,7 @@ export const createChatSlice = (set, get) => ({
       const nextConversationKey = getConversationKeyForSelection(
         state.chatSummaries,
         selectedChatData,
-        state.selectedConversationKey
+        state.userInfo?.id
       );
 
       return {

@@ -1016,8 +1016,10 @@ function Chat({
     .trim();
   const selectedChatBirthdayMeta = getUpcomingBirthdayMeta(selectedChatData?.birthday);
   const resolvedConversationKey = useMemo(() => {
-    if (selectedConversationKey) return selectedConversationKey;
-    if (isGroupChat && selectedChatId) return `group:${selectedChatId}`;
+    if (!selectedChatId) return undefined;
+    if (isGroupChat) {
+      return selectedChatData?.conversationKey || `group:${selectedChatId}`;
+    }
 
     return (
       chatSummaries.find((chat) => {
@@ -1026,11 +1028,12 @@ function Chat({
       })?.conversationKey ||
       getDirectConversationKey(userInfo?.id, selectedChatId)
     );
-  }, [chatSummaries, isGroupChat, selectedChatId, selectedConversationKey, userInfo?.id]);
+  }, [chatSummaries, isGroupChat, selectedChatData?.conversationKey, selectedChatId, userInfo?.id]);
 
   const socket = useSocket();
   const messageListRef = useRef(null);
   const composerRef = useRef(null);
+  const composerInputRef = useRef(null);
   const latestMessagesRequestRef = useRef(0);
   const lastRenderedMessageIdRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -1047,9 +1050,9 @@ function Chat({
     (behavior = "auto") => {
       if (!isMobile) return;
 
-      const composerInput = composerRef.current?.querySelector(
-        '[data-testid="chat-composer-input"]'
-      );
+      const composerInput =
+        composerInputRef.current ||
+        composerRef.current?.querySelector('[data-testid="chat-composer-input"]');
 
       if (!composerInput || document.activeElement !== composerInput) {
         return;
@@ -1070,6 +1073,15 @@ function Chat({
     },
     [isAtMessageBottom, isMobile]
   );
+
+  const keepComposerFocusedAfterSend = useCallback(() => {
+    if (!isMobile) return;
+
+    window.requestAnimationFrame(() => {
+      composerInputRef.current?.focus({ preventScroll: true });
+      keepLatestMessageVisible("auto");
+    });
+  }, [isMobile, keepLatestMessageVisible]);
 
   useEffect(() => {
     const node = composerRef.current;
@@ -1262,13 +1274,20 @@ function Chat({
         disappearingMessagesEnabled: Boolean(payload.disappearingMessagesEnabled),
         disappearingMessageDuration: payload.disappearingMessageDuration || null,
       });
+      if (
+        payload.disappearingMessagesEnabled &&
+        String(payload.updatedBy || "") === String(userInfo?.id || "")
+      ) {
+        setConversationMessages(resolvedConversationKey, []);
+        setStarredMessages([]);
+      }
     };
 
     socket.on("disappearing_settings_updated", handleDisappearingSettingsUpdated);
     return () => {
       socket.off("disappearing_settings_updated", handleDisappearingSettingsUpdated);
     };
-  }, [resolvedConversationKey, socket]);
+  }, [resolvedConversationKey, setConversationMessages, socket, userInfo?.id]);
 
   const updateDisappearingSettings = async (duration) => {
     if (!selectedChatId || disappearingSettingsLoading) return;
@@ -1292,6 +1311,10 @@ function Chat({
         disappearingMessageDuration:
           response.data?.disappearingMessageDuration || null,
       });
+      if (enabled && resolvedConversationKey) {
+        setConversationMessages(resolvedConversationKey, []);
+        setStarredMessages([]);
+      }
       setShowDisappearingSettings(false);
       toast.success(
         enabled
@@ -1798,7 +1821,7 @@ function Chat({
     handleScroll();
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [resolvedConversationKey]);
+  }, [resolvedConversationKey, selectedChatMessages.length]);
 
   useEffect(() => {
     const latestMessage = selectedChatMessages[selectedChatMessages.length - 1];
@@ -1849,9 +1872,9 @@ function Chat({
   useEffect(() => {
     if (!isMobile) return undefined;
 
-    const composerInput = composerRef.current?.querySelector(
-      '[data-testid="chat-composer-input"]'
-    );
+    const composerInput =
+      composerInputRef.current ||
+      composerRef.current?.querySelector('[data-testid="chat-composer-input"]');
     if (!composerInput) return undefined;
 
     const scheduleKeepVisible = () => {
@@ -2470,6 +2493,7 @@ function Chat({
         await handleEditMessage(editingMessageId, text.trim(), null);
         setText("");
         clearReplyState();
+        keepComposerFocusedAfterSend();
         return;
       }
 
@@ -2638,6 +2662,7 @@ function Chat({
       clearAttachedFile();
       clearReplyState();
       setShowAttachmentMenu(false);
+      keepComposerFocusedAfterSend();
     } catch (error) {
       if (typeof optimisticMessageId !== "undefined" && optimisticMessageId) {
         patchLocalMessage(retryConversationKey, { clientMessageId }, {
@@ -3045,9 +3070,6 @@ function Chat({
               }`}
             >
               <span>{moment(message.timestamp).format("LT")}</span>
-              {message.expiresAt ? (
-                <span>Expires {moment(message.expiresAt).fromNow()}</span>
-              ) : null}
               {isSender && renderStatusTick(message)}
             </div>
           </div>
@@ -3782,6 +3804,7 @@ function Chat({
           )}
 
           <Input
+            ref={composerInputRef}
             data-testid="chat-composer-input"
             placeholder={
               !isGroupChat && isUserBlocked()
@@ -3844,6 +3867,16 @@ function Chat({
           <button
             type="button"
             data-testid="chat-send-button"
+            onPointerDown={(event) => {
+              if (isMobile) {
+                event.preventDefault();
+              }
+            }}
+            onMouseDown={(event) => {
+              if (isMobile) {
+                event.preventDefault();
+              }
+            }}
             onClick={() => {
               stopTypingNow();
               handleSendMessage();

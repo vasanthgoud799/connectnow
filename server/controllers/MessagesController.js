@@ -250,8 +250,24 @@ export const updateDisappearingMessageSettings = async (req, res) => {
       chatType,
       chatId,
       conversationKey: target.conversationKey,
+      updatedBy: String(req.userId),
       ...settings,
     };
+
+    if (enabled) {
+      await Message.updateMany(
+        {
+          conversationKey: target.conversationKey,
+          deletedFor: { $ne: req.userId },
+        },
+        {
+          $addToSet: {
+            deletedFor: req.userId,
+          },
+        }
+      );
+    }
+
     emitDisappearingSettingsUpdated({
       participantIds: target.participantIds,
       payload,
