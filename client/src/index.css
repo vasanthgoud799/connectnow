@@ -654,7 +654,7 @@
   .chat-composer-shell {
     position: fixed;
     right: 0;
-    bottom: 0;
+    bottom: var(--app-keyboard-offset, 0px);
     left: 0;
     z-index: 60;
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
