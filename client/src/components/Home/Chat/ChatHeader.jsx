@@ -13,6 +13,7 @@ function ChatHeader({
   mobileActions,
   warningBanner,
   decryptingBanner,
+  disappearingLabel,
 }) {
   return (
     <>
@@ -79,6 +80,11 @@ function ChatHeader({
               >
                 {status?.label || ""}
               </p>
+              {disappearingLabel ? (
+                <p className="truncate pt-0.5 text-[11px] font-medium text-cyan-200">
+                  {disappearingLabel}
+                </p>
+              ) : null}
               {!isMobile && birthdayChip ? <div className="mt-2">{birthdayChip}</div> : null}
             </div>
           </div>

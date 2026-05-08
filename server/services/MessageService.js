@@ -19,6 +19,28 @@ export const getGroupConversationKey = (groupId) => {
   return `group:${String(groupId)}`;
 };
 
+export const ALLOWED_DISAPPEARING_DURATIONS = [3600, 86400, 604800];
+
+export const buildNonExpiredMessageQuery = (now = new Date()) => ({
+  $or: [
+    { expiresAt: { $exists: false } },
+    { expiresAt: null },
+    { expiresAt: { $gt: now } },
+  ],
+});
+
+const getExpiryForDisappearingSetting = (settingSource) => {
+  const duration = Number(settingSource?.disappearingMessageDuration || 0);
+  if (
+    !settingSource?.disappearingMessagesEnabled ||
+    !ALLOWED_DISAPPEARING_DURATIONS.includes(duration)
+  ) {
+    return null;
+  }
+
+  return new Date(Date.now() + duration * 1000);
+};
+
 export const buildClientMessageLookupQuery = ({
   senderId,
   conversationKey,
@@ -71,13 +93,13 @@ const getMessageDisplayContent = (messageDoc) =>
   messageDoc.isDeletedForEveryone
     ? "This message was deleted"
     : messageDoc.encryption?.enabled && messageDoc.messageType === "poll"
-      ? "Encrypted poll"
+      ? "Old encrypted message"
     : messageDoc.encryption?.enabled &&
         messageDoc.encryption?.payloadType === "attachment-caption"
       ? messageDoc.content ||
         (messageDoc.messageType === "audio" ? "Audio" : "Attachment")
     : messageDoc.encryption?.enabled && messageDoc.messageType === "text"
-      ? "Encrypted message"
+      ? "Old encrypted message"
     : messageDoc.content ||
       (messageDoc.messageType === "poll"
         ? messageDoc.meta?.poll?.question || "Poll"
@@ -93,6 +115,13 @@ const getMessageDisplayContent = (messageDoc) =>
 
 const canAccessMessage = async (messageDoc, userId) => {
   const normalizedUserId = String(userId);
+
+  if (
+    messageDoc.expiresAt instanceof Date &&
+    messageDoc.expiresAt.getTime() <= Date.now()
+  ) {
+    return false;
+  }
 
   if (messageDoc.chatType === "group") {
     const group = await Group.findById(messageDoc.group).select("members");
@@ -241,6 +270,10 @@ export const createDirectMessage = async ({
   }
   const createdAt = timestamp ? new Date(timestamp) : new Date();
   const replyPreview = await buildReplyPreview(replyTo, senderId);
+  const chatSetting = await Chat.findOne({ conversationKey })
+    .select("disappearingMessagesEnabled disappearingMessageDuration")
+    .lean();
+  const expiresAt = getExpiryForDisappearingSetting(chatSetting);
 
   const message = await Message.create({
     conversationKey,
@@ -261,6 +294,7 @@ export const createDirectMessage = async ({
     replyPreview,
     forwardedFromMessageId: forwardedFromMessageId || null,
     isForwarded: Boolean(isForwarded || forwardedFromMessageId),
+    expiresAt,
     encryption: encryption?.enabled
       ? {
           enabled: true,
@@ -393,6 +427,7 @@ export const createGroupMessage = async ({
   }
   const createdAt = timestamp ? new Date(timestamp) : new Date();
   const replyPreview = await buildReplyPreview(replyTo, senderId);
+  const expiresAt = getExpiryForDisappearingSetting(group);
 
   const message = await Message.create({
     conversationKey,
@@ -414,6 +449,7 @@ export const createGroupMessage = async ({
     replyPreview,
     forwardedFromMessageId: forwardedFromMessageId || null,
     isForwarded: Boolean(isForwarded || forwardedFromMessageId),
+    expiresAt,
     encryption: encryption?.enabled
       ? {
           enabled: true,
@@ -466,7 +502,10 @@ export const createGroupMessage = async ({
 };
 
 export const getMessageByIdForUser = async ({ messageId, userId }) => {
-  const message = await Message.findById(messageId)
+  const message = await Message.findOne({
+    _id: messageId,
+    ...buildNonExpiredMessageQuery(),
+  })
     .populate("sender", "id email firstName lastName image")
     .populate("recipient", "id email firstName lastName image")
     .populate("group", "name description image members");
@@ -720,6 +759,10 @@ export const getStarredMessages = async ({ userId, conversationKey }) => {
   return starred
     .map((entry) => entry.messageId)
     .filter(Boolean)
+    .filter((message) => {
+      const expiresAt = message.expiresAt ? new Date(message.expiresAt) : null;
+      return !expiresAt || Number.isNaN(expiresAt.getTime()) || expiresAt > new Date();
+    })
     .filter((message) => !(message.deletedFor || []).some((deletedUserId) => String(deletedUserId) === String(userId)));
 };
 
@@ -728,10 +771,24 @@ export const getPinnedMessages = async ({ userId, conversationKey }) => {
     throw new Error("conversationKey is required");
   }
 
+  if (String(conversationKey).startsWith("group:")) {
+    const groupId = String(conversationKey).slice("group:".length);
+    const group = await Group.findById(groupId).select("members");
+    const isMember = group?.members?.some(
+      (member) => getEntityId(member.user) === String(userId)
+    );
+    if (!group || !isMember) {
+      throw new Error("You do not have access to this conversation");
+    }
+  } else if (!String(conversationKey).split(":").includes(String(userId))) {
+    throw new Error("You do not have access to this conversation");
+  }
+
   return Message.find({
     conversationKey,
     deletedFor: { $ne: userId },
     "pinnedByChat.conversationKey": conversationKey,
+    ...buildNonExpiredMessageQuery(),
   })
     .populate("sender", "id email firstName lastName image")
     .populate("recipient", "id email firstName lastName image")

@@ -164,6 +164,39 @@ export const validateMessageIdParam = validator((req) => ({
   messageId: asRequiredObjectId(req.params?.messageId),
 }));
 
+export const validateDisappearingMessagesSettings = validator((req) => {
+  const chatType = asEnum(req.params?.chatType, ["direct", "group"]);
+  const chatId = asRequiredObjectId(req.params?.chatId);
+  const duration =
+    req.body?.duration === null || req.body?.duration === undefined
+      ? null
+      : Number(req.body.duration);
+  const allowedDurations = [3600, 86400, 604800];
+
+  if (req.method === "PATCH") {
+    if (typeof req.body?.enabled !== "boolean") {
+      throw new Error("enabled must be a boolean.");
+    }
+
+    if (duration !== null && !allowedDurations.includes(duration)) {
+      throw new Error("Invalid disappearing message duration.");
+    }
+
+    if (req.body.enabled && !allowedDurations.includes(duration)) {
+      throw new Error("Duration is required when disappearing messages are enabled.");
+    }
+  }
+
+  return {
+    disappearingSettings: {
+      chatType,
+      chatId,
+      enabled: Boolean(req.body?.enabled),
+      duration,
+    },
+  };
+});
+
 export const validateUploadIntent = validator((req) => ({
   uploadIntent: {
     originalName: asSafeText(req.body?.originalName, { min: 1, max: 180 }),

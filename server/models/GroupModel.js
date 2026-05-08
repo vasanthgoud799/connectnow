@@ -82,6 +82,15 @@ const groupSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    disappearingMessagesEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    disappearingMessageDuration: {
+      type: Number,
+      enum: [null, 3600, 86400, 604800],
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -21,6 +21,24 @@ export const sanitizeEncryptedMessageText = (value, message = {}) => {
   return value === undefined || value === null ? "" : String(value);
 };
 
+const getRecoverableMessageText = (message = {}) => {
+  const content = sanitizeEncryptedMessageText(message.content, message);
+  const decryptedContent = sanitizeEncryptedMessageText(message.decryptedContent, message);
+
+  if (content || decryptedContent) {
+    return { content, decryptedContent };
+  }
+
+  if (message?.encryption?.enabled || message?.mediaEncryption?.enabled) {
+    return {
+      content: "Old encrypted message",
+      decryptedContent: "",
+    };
+  }
+
+  return { content: "", decryptedContent: "" };
+};
+
 export const getMessageId = (message) =>
   toStringId(message?._id || message?.id);
 
@@ -44,6 +62,7 @@ export const getMessageTimestamp = (message) => {
 export const normalizeMessage = (message, { conversationKey } = {}) => {
   if (!message || typeof message !== "object") return null;
 
+  const recoveredText = getRecoverableMessageText(message);
   const normalizedId = getMessageId(message);
   const normalizedClientMessageId = getMessageClientId(message);
   const normalizedConversationKey =
@@ -53,8 +72,8 @@ export const normalizeMessage = (message, { conversationKey } = {}) => {
 
   return {
     ...message,
-    content: sanitizeEncryptedMessageText(message.content, message),
-    decryptedContent: sanitizeEncryptedMessageText(message.decryptedContent, message),
+    content: recoveredText.content,
+    decryptedContent: recoveredText.decryptedContent,
     _id: normalizedId || message._id,
     id: normalizedId || message.id || normalizedClientMessageId,
     clientMessageId: normalizedClientMessageId || null,

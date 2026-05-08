@@ -42,6 +42,7 @@ export const STARRED_MESSAGES_ROUTE = `${MESSAGES_ROUTES}/starred`;
 export const PINNED_MESSAGES_ROUTE = `${MESSAGES_ROUTES}/pinned`;
 export const MARK_MESSAGES_SEEN_ROUTE = `${MESSAGES_ROUTES}/mark-seen`;
 export const UPLOAD_FILE_ROUTE = `${MESSAGES_ROUTES}/upload-file`;
+export const DISAPPEARING_MESSAGES_SETTINGS_ROUTE = `${MESSAGES_ROUTES}/disappearing-settings`;
 export const VIDEO_CALL_ROUTE = `${MESSAGES_ROUTES}/video-call`;
 export const CHAT_PREFERENCES_ROUTE = "api/chat-preferences";
 export const GLOBAL_SEARCH_ROUTE = "api/search";

@@ -398,9 +398,9 @@ const setupSocket = async (server) => {
   }) => {
     const messagePreview =
       message?.encryption?.enabled && message?.messageType === "poll"
-        ? "Encrypted poll"
+        ? "Old encrypted message"
         : message?.encryption?.enabled && message?.messageType === "text"
-          ? "Encrypted message"
+          ? "Old encrypted message"
           : message.content;
     const notification = await createNotification({
       userId: recipientId,
@@ -457,9 +457,9 @@ const setupSocket = async (server) => {
             senderLabel,
             messagePreview:
               message?.encryption?.enabled && message?.messageType === "poll"
-                ? "Encrypted poll"
+                ? "Old encrypted message"
                 : message?.encryption?.enabled && message?.messageType === "text"
-                  ? "Encrypted message"
+                  ? "Old encrypted message"
                   : message.content,
           },
         });
@@ -916,6 +916,27 @@ const setupSocket = async (server) => {
     io.to(getUserRoom(recipientId)).emit("typing:update", typingPayload);
   };
 
+  const canJoinConversation = async ({ userId, conversationKey }) => {
+    const normalizedUserId = String(userId || "");
+    const normalizedKey = String(conversationKey || "");
+    if (!normalizedUserId || !normalizedKey) return false;
+
+    if (normalizedKey.startsWith("group:")) {
+      const groupId = normalizedKey.slice("group:".length);
+      const group = await Group.findById(groupId).select("members.user").lean();
+      return Boolean(
+        group?.members?.some(
+          (member) => String(member.user?._id || member.user) === normalizedUserId
+        )
+      );
+    }
+
+    return normalizedKey
+      .split(":")
+      .map(String)
+      .includes(normalizedUserId);
+  };
+
   io.on("connection", async (socket) => {
     const userId = socket.data.userId;
 
@@ -966,6 +987,11 @@ const setupSocket = async (server) => {
         (otherUserId ? getConversationKey(socket.data.userId, otherUserId) : null);
 
       if (!resolvedConversationKey) return;
+      const allowed = await canJoinConversation({
+        userId: socket.data.userId,
+        conversationKey: resolvedConversationKey,
+      });
+      if (!allowed) return;
 
       activeConversationBySocket.set(socket.id, resolvedConversationKey);
       socket.join(getConversationRoom(resolvedConversationKey));
@@ -1719,6 +1745,14 @@ const setupSocket = async (server) => {
 
         if (!resolvedConversationKey) {
           callback?.({ ok: false, error: "conversationKey is required" });
+          return;
+        }
+        const allowed = await canJoinConversation({
+          userId: socket.data.userId,
+          conversationKey: resolvedConversationKey,
+        });
+        if (!allowed) {
+          callback?.({ ok: false, error: "Forbidden" });
           return;
         }
 

@@ -1,10 +1,6 @@
 import { useEffect } from "react";
 import { useAppStore } from "@/store";
 import {
-  decryptIncomingMessage,
-  preloadRecentEncryptedMedia,
-} from "@/crypto/e2eeService";
-import {
   areSameMessage,
   normalizeMessage,
   sanitizeEncryptedMessageText,
@@ -85,85 +81,67 @@ const useHandleReceiveMessage = (socket) => {
         conversationKey: normalizedIncomingMessage?.conversationKey,
       });
 
-      decryptIncomingMessage({
-        message: normalizedIncomingMessage,
-        currentUserId: useAppStore.getState().userInfo?.id,
-      })
-        .then((nextMessage) => {
-          const currentState = useAppStore.getState();
-          const conversationMessages = Array.isArray(
-            currentState.messagesByConversationKey?.[nextMessage?.conversationKey]
-          )
-            ? currentState.messagesByConversationKey[nextMessage.conversationKey]
-            : [];
-          const duplicateExists = conversationMessages.some((item) =>
-            areSameMessage(item, nextMessage)
-          );
+      const currentState = useAppStore.getState();
+      const conversationMessages = Array.isArray(
+        currentState.messagesByConversationKey?.[normalizedIncomingMessage?.conversationKey]
+      )
+        ? currentState.messagesByConversationKey[normalizedIncomingMessage.conversationKey]
+        : [];
+      const duplicateExists = conversationMessages.some((item) =>
+        areSameMessage(item, normalizedIncomingMessage)
+      );
 
-          if (duplicateExists) {
-            replaceMessage(nextMessage);
-          } else {
-            addMessages(nextMessage);
-          }
+      if (duplicateExists) {
+        replaceMessage(normalizedIncomingMessage);
+      } else {
+        addMessages(normalizedIncomingMessage);
+      }
 
-          const isCurrentConversationVisible =
-            document.visibilityState === "visible" &&
-            currentState.activeHomeSection === "chats" &&
-            currentState.selectedConversationKey === nextMessage?.conversationKey &&
-            (!window.matchMedia?.("(max-width: 768px)")?.matches ||
-              currentState.mobileChatView === "chat");
+      const isCurrentConversationVisible =
+        document.visibilityState === "visible" &&
+        currentState.activeHomeSection === "chats" &&
+        currentState.selectedConversationKey === normalizedIncomingMessage?.conversationKey &&
+        (!window.matchMedia?.("(max-width: 768px)")?.matches ||
+          currentState.mobileChatView === "chat");
 
-          if (
-            currentState.browserNotificationsEnabled &&
-            !isCurrentConversationVisible &&
-            senderIdIsOtherUser(nextMessage, currentState.userInfo?.id)
-          ) {
-            const title =
-              nextMessage?.chatType === "group"
-                ? nextMessage?.group?.name || "Group message"
-                : [
-                    nextMessage?.sender?.firstName,
-                    nextMessage?.sender?.lastName,
-                  ]
-                    .filter(Boolean)
-                    .join(" ") ||
-                  nextMessage?.sender?.email ||
-                  "New message";
-            const body = getMessageNotificationPreview(nextMessage);
-            const payload = getNotificationPayloadForMessage(
-              nextMessage,
-              currentState.userInfo?.id
-            );
+      if (
+        currentState.browserNotificationsEnabled &&
+        !isCurrentConversationVisible &&
+        senderIdIsOtherUser(normalizedIncomingMessage, currentState.userInfo?.id)
+      ) {
+        const title =
+          normalizedIncomingMessage?.chatType === "group"
+            ? normalizedIncomingMessage?.group?.name || "Group message"
+            : [
+                normalizedIncomingMessage?.sender?.firstName,
+                normalizedIncomingMessage?.sender?.lastName,
+              ]
+                .filter(Boolean)
+                .join(" ") ||
+              normalizedIncomingMessage?.sender?.email ||
+              "New message";
+        const body = getMessageNotificationPreview(normalizedIncomingMessage);
+        const payload = getNotificationPayloadForMessage(
+          normalizedIncomingMessage,
+          currentState.userInfo?.id
+        );
 
-            showBrowserNotification({
-              title,
-              body,
-              tag: `message:${nextMessage?.conversationKey}`,
-              data: {
-                notificationKind: "message",
-                conversationKey: nextMessage?.conversationKey,
-                messageId: nextMessage?._id || nextMessage?.id,
-              },
-              onClick: () =>
-                dispatchOpenChatFromNotification({
-                  payload,
-                  messageId: nextMessage?._id || nextMessage?.id,
-                }),
-            });
-          }
-          preloadRecentEncryptedMedia({
-            messages: [nextMessage],
-            currentUserId: useAppStore.getState().userInfo?.id,
-            limit: 1,
-          })
-            .then(([hydratedMessage]) => {
-              if (hydratedMessage) {
-                replaceMessage(hydratedMessage);
-              }
-            })
-            .catch(() => {});
-        })
-        .catch(() => addMessages(normalizedIncomingMessage));
+        showBrowserNotification({
+          title,
+          body,
+          tag: `message:${normalizedIncomingMessage?.conversationKey}`,
+          data: {
+            notificationKind: "message",
+            conversationKey: normalizedIncomingMessage?.conversationKey,
+            messageId: normalizedIncomingMessage?._id || normalizedIncomingMessage?.id,
+          },
+          onClick: () =>
+            dispatchOpenChatFromNotification({
+              payload,
+              messageId: normalizedIncomingMessage?._id || normalizedIncomingMessage?.id,
+            }),
+        });
+      }
     };
 
     const handleDelivered = (payload) => {
@@ -183,21 +161,11 @@ const useHandleReceiveMessage = (socket) => {
     };
 
     const handlePollUpdated = (message) => {
-      decryptIncomingMessage({
-        message,
-        currentUserId: useAppStore.getState().userInfo?.id,
-      })
-        .then((nextMessage) => replaceMessage(nextMessage))
-        .catch(() => replaceMessage(message));
+      replaceMessage(normalizeMessage(message));
     };
 
     const handleMessageUpdated = (message) => {
-      decryptIncomingMessage({
-        message,
-        currentUserId: useAppStore.getState().userInfo?.id,
-      })
-        .then((nextMessage) => replaceMessage(nextMessage))
-        .catch(() => replaceMessage(message));
+      replaceMessage(normalizeMessage(message));
     };
 
     const handleMessageDeletedForMe = (payload) => {

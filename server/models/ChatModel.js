@@ -78,6 +78,15 @@ const chatSchema = new mongoose.Schema(
       of: Number,
       default: {},
     },
+    disappearingMessagesEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    disappearingMessageDuration: {
+      type: Number,
+      enum: [null, 3600, 86400, 604800],
+      default: null,
+    },
   },
   {
     timestamps: true,

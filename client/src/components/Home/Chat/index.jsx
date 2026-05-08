@@ -59,6 +59,7 @@ import {
   AI_TONE_SUGGESTIONS_ROUTE,
   AI_TRANSLATE_ROUTE,
   CALLS_LOG_ROUTE,
+  DISAPPEARING_MESSAGES_SETTINGS_ROUTE,
   GET_ALL_MESSAGES_ROUTES,
   MARK_MESSAGES_SEEN_ROUTE,
   STARRED_MESSAGES_ROUTE,
@@ -66,15 +67,6 @@ import {
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants.js";
 import { isDirectCallBusy } from "@/store/actions/callActions";
-import {
-  decryptIncomingMessages,
-  decryptMediaAttachmentToObjectUrl,
-  encryptMediaFileForConversation,
-  encryptTextForConversation,
-  fetchConversationPublicKeys,
-  hydrateMessagesFromCache,
-  preloadRecentEncryptedMedia,
-} from "@/crypto/e2eeService";
 import { useTrustStatus } from "./hooks/useTrustStatus";
 import {
   areSameMessage,
@@ -99,6 +91,20 @@ function formatDurationLabel(totalSeconds) {
     .padStart(2, "0");
 
   return `${mins}:${secs}`;
+}
+
+const DISAPPEARING_MESSAGE_OPTIONS = [
+  { label: "Off", value: null },
+  { label: "1 hour", value: 3600 },
+  { label: "24 hours", value: 86400 },
+  { label: "7 days", value: 604800 },
+];
+
+function getDisappearingDurationLabel(duration) {
+  return (
+    DISAPPEARING_MESSAGE_OPTIONS.find((option) => option.value === duration)?.label ||
+    "Off"
+  );
 }
 
 async function compressImageIfNeeded(file) {
@@ -415,136 +421,9 @@ function EncryptedMediaMessage({
   isMobile,
   onOpenImage,
 }) {
-  const [resolvedMedia, setResolvedMedia] = useState(message?.resolvedMedia || null);
-  const [loading, setLoading] = useState(!message?.resolvedMedia);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (message?.resolvedMedia) {
-      setResolvedMedia(message.resolvedMedia);
-      setLoading(false);
-      setError("");
-      return undefined;
-    }
-
-    let ignore = false;
-
-    const loadEncryptedMedia = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const nextMedia = await decryptMediaAttachmentToObjectUrl({
-          message,
-          currentUserId,
-        });
-
-        if (!ignore) {
-          setResolvedMedia(nextMedia);
-        }
-      } catch (decryptError) {
-        console.error("Unable to decrypt media attachment:", decryptError);
-        if (!ignore) {
-          setError("This media is unavailable on this device.");
-        }
-      } finally {
-        if (!ignore) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadEncryptedMedia();
-
-    return () => {
-      ignore = true;
-    };
-  }, [currentUserId, message]);
-
-  const attachmentCaption = String(message.decryptedContent || "").trim();
-
-  if (loading) {
-    return (
-      <div className="themed-file-card flex w-full min-w-0 max-w-[340px] items-center justify-center rounded-[24px] px-4 py-6 text-sm opacity-80">
-        Decrypting media...
-      </div>
-    );
-  }
-
-  if (error || !resolvedMedia?.objectUrl) {
-    return (
-      <div className="themed-file-card flex w-full min-w-0 max-w-[340px] items-center justify-center rounded-[24px] px-4 py-6 text-sm text-rose-300">
-        {error || "Encrypted media unavailable."}
-      </div>
-    );
-  }
-
-  if (message.messageType === "image") {
-    return (
-      <div className={`${isMobile ? "max-w-[58vw]" : "max-w-[340px]"} w-full min-w-0 space-y-3`}>
-        <img
-          src={resolvedMedia.objectUrl}
-          alt={resolvedMedia.fileName || "Encrypted image"}
-          className={`${isMobile ? "max-h-[190px]" : "max-h-[260px]"} block h-auto w-full rounded-2xl object-cover`}
-          onClick={() => onOpenImage?.(resolvedMedia.objectUrl)}
-        />
-        {attachmentCaption ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-6">
-            {renderTextWithMentions(attachmentCaption)}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (message.messageType === "video") {
-    return (
-      <div className={`${isMobile ? "max-w-[58vw]" : "max-w-[340px]"} w-full min-w-0 space-y-3`}>
-        <video
-          controls
-          className={`${isMobile ? "max-h-[190px]" : "max-h-[260px]"} block h-auto w-full rounded-2xl object-cover`}
-        >
-          <source
-            src={resolvedMedia.objectUrl}
-            type={resolvedMedia.mimeType || "video/mp4"}
-          />
-        </video>
-        {attachmentCaption ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-6">
-            {renderTextWithMentions(attachmentCaption)}
-          </p>
-        ) : null}
-        <p className="text-xs opacity-75">Encrypted video attachment</p>
-      </div>
-    );
-  }
-
-  if (message.messageType === "audio") {
-    return (
-      <div className="w-full min-w-0 space-y-3">
-        <AudioMessageCard
-          fileUrl={resolvedMedia.objectUrl}
-          isVoiceNote={String(message.content || "").toLowerCase().includes("voice")}
-        />
-        {attachmentCaption ? (
-          <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6">
-            {renderTextWithMentions(attachmentCaption)}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full min-w-0 space-y-3">
-      <DocumentMessageCard
-        fileUrl={resolvedMedia.objectUrl}
-        fileName={resolvedMedia.fileName}
-      />
-      {attachmentCaption ? (
-        <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6">
-          {renderTextWithMentions(attachmentCaption)}
-        </p>
-      ) : null}
+    <div className="themed-file-card flex w-full min-w-0 max-w-[340px] items-center justify-center rounded-[24px] px-4 py-6 text-sm opacity-80">
+      Old encrypted message
     </div>
   );
 }
@@ -1098,8 +977,13 @@ function Chat({
   const [showGroupCallPicker, setShowGroupCallPicker] = useState(false);
   const [groupCallMode, setGroupCallMode] = useState("audio");
   const [showMobileHeaderMenu, setShowMobileHeaderMenu] = useState(false);
+  const [showDisappearingSettings, setShowDisappearingSettings] = useState(false);
+  const [disappearingSettings, setDisappearingSettings] = useState({
+    disappearingMessagesEnabled: false,
+    disappearingMessageDuration: null,
+  });
+  const [disappearingSettingsLoading, setDisappearingSettingsLoading] = useState(false);
   const [groupE2eeBlockedMembers, setGroupE2eeBlockedMembers] = useState([]);
-  const [isDecryptingMessages, setIsDecryptingMessages] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState("");
   const [hasPendingNewMessages, setHasPendingNewMessages] = useState(false);
@@ -1322,6 +1206,104 @@ function Chat({
   useEffect(() => stopTypingNow, [resolvedConversationKey, stopTypingNow]);
 
   useEffect(() => {
+    let ignore = false;
+
+    const loadDisappearingSettings = async () => {
+      if (!selectedChatId) {
+        setDisappearingSettings({
+          disappearingMessagesEnabled: false,
+          disappearingMessageDuration: null,
+        });
+        return;
+      }
+
+      try {
+        const chatType = isGroupChat ? "group" : "direct";
+        const response = await apiClient.get(
+          `${DISAPPEARING_MESSAGES_SETTINGS_ROUTE}/${chatType}/${selectedChatId}`,
+          { withCredentials: true }
+        );
+        if (ignore) return;
+        setDisappearingSettings({
+          disappearingMessagesEnabled: Boolean(
+            response.data?.disappearingMessagesEnabled
+          ),
+          disappearingMessageDuration:
+            response.data?.disappearingMessageDuration || null,
+        });
+      } catch (error) {
+        if (!ignore) {
+          setDisappearingSettings({
+            disappearingMessagesEnabled: false,
+            disappearingMessageDuration: null,
+          });
+        }
+      }
+    };
+
+    loadDisappearingSettings();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isGroupChat, selectedChatId]);
+
+  useEffect(() => {
+    if (!socket || !resolvedConversationKey) return undefined;
+
+    const handleDisappearingSettingsUpdated = (payload = {}) => {
+      if (payload.conversationKey !== resolvedConversationKey) return;
+      setDisappearingSettings({
+        disappearingMessagesEnabled: Boolean(payload.disappearingMessagesEnabled),
+        disappearingMessageDuration: payload.disappearingMessageDuration || null,
+      });
+    };
+
+    socket.on("disappearing_settings_updated", handleDisappearingSettingsUpdated);
+    return () => {
+      socket.off("disappearing_settings_updated", handleDisappearingSettingsUpdated);
+    };
+  }, [resolvedConversationKey, socket]);
+
+  const updateDisappearingSettings = async (duration) => {
+    if (!selectedChatId || disappearingSettingsLoading) return;
+
+    const enabled = duration !== null;
+    const chatType = isGroupChat ? "group" : "direct";
+    try {
+      setDisappearingSettingsLoading(true);
+      const response = await apiClient.patch(
+        `${DISAPPEARING_MESSAGES_SETTINGS_ROUTE}/${chatType}/${selectedChatId}`,
+        {
+          enabled,
+          duration,
+        },
+        { withCredentials: true }
+      );
+      setDisappearingSettings({
+        disappearingMessagesEnabled: Boolean(
+          response.data?.disappearingMessagesEnabled
+        ),
+        disappearingMessageDuration:
+          response.data?.disappearingMessageDuration || null,
+      });
+      setShowDisappearingSettings(false);
+      toast.success(
+        enabled
+          ? `Disappearing messages turned on: ${getDisappearingDurationLabel(duration)}`
+          : "Disappearing messages turned off"
+      );
+    } catch (error) {
+      console.error("Error updating disappearing messages:", error);
+      toast.error(
+        error.response?.data?.message || "Unable to update disappearing messages."
+      );
+    } finally {
+      setDisappearingSettingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (!socket) return undefined;
 
     const handleTypingUpdate = (payload = {}) => {
@@ -1417,78 +1399,12 @@ function Chat({
   }, [activeUsers, isGroupChat, selectedChatData?.members, userInfo?.id]);
 
   const waitForConversationKeys = async (missingRecipientIds = []) => {
-    if (!missingRecipientIds.length) return false;
-
-    const { requestRemoteE2eeInit } = await import("@/utils/wssConnection/wssConnection");
-    requestRemoteE2eeInit({ userIds: missingRecipientIds });
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      const conversationKeys = await fetchConversationPublicKeys({
-        userId: isGroupChat ? undefined : selectedChatId,
-        groupId: isGroupChat ? selectedChatId : undefined,
-      });
-
-      const stillMissing = missingRecipientIds.filter(
-        (recipientId) =>
-          isGroupChat
-            ? !conversationKeys[String(recipientId)]?.publicKeyJwk
-            : !conversationKeys[String(recipientId)]?.ecdhPublicKeyJwk
-      );
-
-      if (!stillMissing.length) {
-        return true;
-      }
-    }
-
     return false;
   };
 
   useEffect(() => {
-    let ignore = false;
-
-    const loadGroupEncryptionStatus = async () => {
-      if (!isGroupChat || !selectedChatId || !userInfo?.id) {
-        setGroupE2eeBlockedMembers([]);
-        return;
-      }
-
-      try {
-        const conversationKeys = await fetchConversationPublicKeys({
-          groupId: selectedChatId,
-        });
-        const missingMembers = (selectedChatData?.members || [])
-          .map((member) => {
-            const memberId = String(member.user?._id || member.user || member._id || member.id);
-            const keyRecord = conversationKeys[memberId];
-            const displayName =
-              member.user?.firstName ||
-              member.firstName ||
-              member.user?.email ||
-              member.email ||
-              "A group member";
-
-            return !keyRecord?.publicKeyJwk ? { id: memberId, displayName } : null;
-          })
-          .filter(Boolean)
-          .filter((member) => String(member.id) !== String(userInfo.id));
-
-        if (!ignore) {
-          setGroupE2eeBlockedMembers(missingMembers);
-        }
-      } catch (error) {
-        if (!ignore) {
-          setGroupE2eeBlockedMembers([]);
-        }
-      }
-    };
-
-    loadGroupEncryptionStatus();
-
-    return () => {
-      ignore = true;
-    };
-  }, [isGroupChat, selectedChatData?.members, selectedChatId, userInfo?.id]);
+    setGroupE2eeBlockedMembers([]);
+  }, [isGroupChat, selectedChatId, userInfo?.id]);
   const canMessageDirectUser =
     isGroupChat ||
     (userInfo?.friends || []).some((friendId) => String(friendId) === String(selectedChatId));
@@ -1565,10 +1481,6 @@ function Chat({
         if (pendingConversationKey) {
           setConversationMessagesLoading(pendingConversationKey, true);
         }
-        if (!cachedMessages.length) {
-          setIsDecryptingMessages(true);
-        }
-
         const response = await apiClient.post(
           GET_ALL_MESSAGES_ROUTES,
           isGroupChat ? { groupId: selectedChatId } : { id: selectedChatId },
@@ -1594,42 +1506,14 @@ function Chat({
           setSelectedConversationKey(response.data.conversationKey);
         }
 
-        const hydratedMessages = await hydrateMessagesFromCache({
-          messages: rawMessages,
-        });
-
         if (requestId !== latestMessagesRequestRef.current) return;
-        setConversationMessages(nextConversationKey, hydratedMessages, { loaded: false });
-
-        const decryptedMessages = await decryptIncomingMessages({
-          messages: rawMessages,
-          currentUserId: userInfo?.id,
-        });
-
-        if (requestId !== latestMessagesRequestRef.current) return;
-        setConversationMessages(nextConversationKey, decryptedMessages);
-
-        preloadRecentEncryptedMedia({
-          messages: decryptedMessages,
-          currentUserId: userInfo?.id,
-          limit: 8,
-        })
-          .then((prefetchedMessages) => {
-            if (requestId !== latestMessagesRequestRef.current) return;
-            setConversationMessages(nextConversationKey, prefetchedMessages);
-          })
-          .catch((error) => {
-            console.error("Error preloading encrypted media:", error);
-          });
+        setConversationMessages(nextConversationKey, rawMessages);
       } catch (err) {
         console.error("Error fetching messages:", err);
         setMessageLoadError("Unable to load messages right now.");
       } finally {
         if (resolvedConversationKey) {
           setConversationMessagesLoading(resolvedConversationKey, false);
-        }
-        if (requestId === latestMessagesRequestRef.current) {
-          setIsDecryptingMessages(false);
         }
       }
     };
@@ -2050,7 +1934,6 @@ function Chat({
 
   const fetchStarredMessages = async () => {
     try {
-      setIsDecryptingMessages(true);
       const response = await apiClient.get(STARRED_MESSAGES_ROUTE, {
         params: {
           conversationKey: selectedConversationKey,
@@ -2058,32 +1941,10 @@ function Chat({
         withCredentials: true,
       });
 
-      const cachedMessages = await hydrateMessagesFromCache({
-        messages: response.data.messages || [],
-      });
-      setStarredMessages(cachedMessages);
-
-      const decryptedMessages = await decryptIncomingMessages({
-        messages: response.data.messages || [],
-        currentUserId: userInfo?.id,
-      });
-      setStarredMessages(decryptedMessages);
-      preloadRecentEncryptedMedia({
-        messages: decryptedMessages,
-        currentUserId: userInfo?.id,
-        limit: 8,
-      })
-        .then((hydratedMessages) => {
-          setStarredMessages(hydratedMessages);
-        })
-        .catch((error) => {
-          console.error("Error preloading starred encrypted media:", error);
-        });
+      setStarredMessages(response.data.messages || []);
     } catch (error) {
       console.error("Error fetching starred messages:", error);
       toast.error("Unable to load starred messages.");
-    } finally {
-      setIsDecryptingMessages(false);
     }
   };
 
@@ -2154,124 +2015,28 @@ function Chat({
       ? String(plaintext || "")
       : String(plaintext || "").trim();
 
-    if (!normalizedPlaintext.trim()) {
-      return { content: normalizedPlaintext, encryption: null };
-    }
-
-    return encryptTextForConversation({
-      plaintext: normalizedPlaintext,
-      currentUserId: userInfo?.id,
-      userId: overrides.userId || (!isGroupChat ? selectedChatId : undefined),
-      groupId: overrides.groupId || (isGroupChat ? selectedChatId : undefined),
-      payloadType,
-    });
+    return { content: normalizedPlaintext, encryption: null };
   };
 
   const buildForwardPayload = async (message, chat) => {
     const isTargetGroup = chat.chatType === "group";
     const participant = chat.participant || {};
-    let encryptedPayload = null;
-    let forwardedMeta = message.meta;
-    let forwardedFileUrl = message.fileUrl;
-    let forwardedStorageProvider = message.storageProvider;
-    let forwardedStoragePath = message.storagePath;
-    let forwardedStorageBucket = message.storageBucket;
-    let forwardedMediaEncryption = message.mediaEncryption || null;
-
-    if (message.messageType === "text") {
-      encryptedPayload = await encryptTextForConversation({
-        plaintext: message.decryptedContent || message.content || "",
-        currentUserId: userInfo?.id,
-        userId: isTargetGroup ? undefined : participant._id || participant.id,
-        groupId: isTargetGroup ? chat.group?._id : undefined,
-      });
-    } else if (message.messageType === "poll") {
-      const poll = message.meta?.poll || {};
-      encryptedPayload = await encryptTextForConversation({
-        plaintext: JSON.stringify({
-          question: poll.question || "",
-          options: Array.isArray(poll.options)
-            ? poll.options.map((option) => ({ text: option.text || "" }))
-            : [],
-        }),
-        currentUserId: userInfo?.id,
-        userId: isTargetGroup ? undefined : participant._id || participant.id,
-        groupId: isTargetGroup ? chat.group?._id : undefined,
-        payloadType: "poll",
-      });
-      forwardedMeta = {
-        ...message.meta,
-        poll: {
-          allowMultipleAnswers: Boolean(message.meta?.poll?.allowMultipleAnswers),
-          question: "Encrypted poll",
-          options: Array.isArray(message.meta?.poll?.options)
-            ? message.meta.poll.options.map((option, index) => ({
-                id: option.id,
-                text: `Encrypted option ${index + 1}`,
-              }))
-            : [],
-        },
-      };
-    } else if (
-      ["image", "video", "audio", "document"].includes(message.messageType) &&
-      message.decryptedContent
-    ) {
-      encryptedPayload = await encryptTextForConversation({
-        plaintext: message.decryptedContent,
-        currentUserId: userInfo?.id,
-        userId: isTargetGroup ? undefined : participant._id || participant.id,
-        groupId: isTargetGroup ? chat.group?._id : undefined,
-        payloadType: "attachment-caption",
-      });
-    }
-
-    if (
-      ["image", "video", "audio", "document"].includes(message.messageType) &&
-      message.mediaEncryption?.enabled
-    ) {
-      const decryptedMedia = await decryptMediaAttachmentToObjectUrl({
-        message,
-        currentUserId: userInfo?.id,
-      });
-      const mediaResponse = await fetch(decryptedMedia.objectUrl);
-      const mediaBlob = await mediaResponse.blob();
-      const decryptedFile = new File(
-        [mediaBlob],
-        decryptedMedia.fileName || "attachment",
-        { type: decryptedMedia.mimeType || "application/octet-stream" }
-      );
-      const encryptedMediaUpload = await encryptMediaFileForConversation({
-        file: decryptedFile,
-        currentUserId: userInfo?.id,
-        userId: isTargetGroup ? undefined : participant._id || participant.id,
-        groupId: isTargetGroup ? chat.group?._id : undefined,
-      });
-      const uploadedMedia = await uploadFile(encryptedMediaUpload.encryptedFile, {
-        encryptedMedia: true,
-        originalMimeType: decryptedFile.type,
-      });
-      forwardedFileUrl = uploadedMedia?.fileUrl;
-      forwardedStorageProvider = uploadedMedia?.storageProvider;
-      forwardedStoragePath = uploadedMedia?.storagePath;
-      forwardedStorageBucket = uploadedMedia?.storageBucket;
-      forwardedMediaEncryption = encryptedMediaUpload.mediaEncryption;
-    }
 
     return {
       recipient: isTargetGroup ? undefined : participant._id || participant.id,
       groupId: isTargetGroup ? chat.group?._id : undefined,
-      content: encryptedPayload ? "" : message.content,
+      content: message.decryptedContent || message.content || "",
       messageType: message.messageType,
-      fileUrl: forwardedFileUrl,
-      storageProvider: forwardedStorageProvider,
-      storagePath: forwardedStoragePath,
-      storageBucket: forwardedStorageBucket,
-      meta: forwardedMeta,
+      fileUrl: message.fileUrl,
+      storageProvider: message.storageProvider,
+      storagePath: message.storagePath,
+      storageBucket: message.storageBucket,
+      meta: message.meta,
       replyTo: message.replyTo?._id || message.replyTo || null,
       forwardedFromMessageId: message._id || message.id,
       isForwarded: true,
-      encryption: encryptedPayload?.encryption || null,
-      mediaEncryption: forwardedMediaEncryption,
+      encryption: null,
+      mediaEncryption: null,
       timestamp: new Date().toISOString(),
     };
   };
@@ -2600,13 +2365,6 @@ function Chat({
     if (!socket || !selectedChatData) return;
 
     try {
-      const encryptedPollPayload = await buildEncryptedPayload(
-        JSON.stringify({
-          question,
-          options: options.map((option) => ({ text: option.text })),
-        }),
-        { payloadType: "poll" }
-      );
       const pollRequestId =
         globalThis.crypto?.randomUUID?.() ||
         `poll-${Date.now()}-${Math.random()}`;
@@ -2619,19 +2377,19 @@ function Chat({
           requestId: pollRequestId,
           recipient: isGroupChat ? undefined : selectedChatData._id,
           groupId: isGroupChat ? selectedChatData._id : undefined,
-          content: "Encrypted poll",
+          content: question,
           messageType: "poll",
           meta: {
             poll: {
-              question: "Encrypted poll",
-              options: options.map((option, index) => ({
+              question,
+              options: options.map((option) => ({
                 id: option.id,
-                text: `Encrypted option ${index + 1}`,
+                text: option.text,
               })),
               allowMultipleAnswers,
             },
           },
-          encryption: encryptedPollPayload?.encryption || null,
+          encryption: null,
           timestamp: new Date().toISOString(),
         },
         (ack) => {
@@ -2643,7 +2401,7 @@ function Chat({
         }
       );
     } catch (error) {
-      console.error("Unable to encrypt poll:", error);
+      console.error("Unable to create poll:", error);
       toast.error("Unable to create poll.");
     }
   };
@@ -2687,7 +2445,6 @@ function Chat({
     let optimisticMessageId = null;
     let clientMessageId = null;
     let requestId = null;
-    let shouldRetryAfterKeyInit = false;
     let retryConversationKey = resolvedConversationKey;
 
     try {
@@ -2699,12 +2456,7 @@ function Chat({
       requestId = clientMessageId;
 
       if (editingMessageId) {
-        const encryptedEditPayload = await buildEncryptedPayload(text.trim());
-        await handleEditMessage(
-          editingMessageId,
-          encryptedEditPayload.content,
-          encryptedEditPayload.encryption
-        );
+        await handleEditMessage(editingMessageId, text.trim(), null);
         setText("");
         clearReplyState();
         return;
@@ -2712,8 +2464,6 @@ function Chat({
 
       let messageType = "text";
       let uploadedFile = null;
-      let encryptedTextPayload = null;
-      let encryptedMediaPayload = null;
       let preparedAttachmentFile = attachedFile.file;
       const pendingText = text;
       const pendingReplyId = replyingToMessage?._id || replyingToMessage?.id || null;
@@ -2785,15 +2535,7 @@ function Chat({
           uploadStatus: "uploading",
           uploadProgress: 0,
         });
-        encryptedMediaPayload = await encryptMediaFileForConversation({
-          file: preparedAttachmentFile,
-          currentUserId: userInfo?.id,
-          userId: isGroupChat ? undefined : selectedChatId,
-          groupId: isGroupChat ? selectedChatId : undefined,
-        });
-        uploadedFile = await uploadFile(encryptedMediaPayload.encryptedFile, {
-          encryptedMedia: true,
-          originalMimeType: preparedAttachmentFile.type,
+        uploadedFile = await uploadFile(preparedAttachmentFile, {
           onProgress: (progress) => {
             if (optimisticMessageId) {
               patchLocalMessage(activeConversationKey, { clientMessageId }, { uploadProgress: progress });
@@ -2806,14 +2548,6 @@ function Chat({
             uploadProgress: 100,
           });
         }
-        if (text.trim()) {
-          encryptedTextPayload = await buildEncryptedPayload(text, {
-            payloadType: "attachment-caption",
-            preserveWhitespace: true,
-          });
-        }
-      } else {
-        encryptedTextPayload = await buildEncryptedPayload(text.trim());
       }
 
       const contentMap = {
@@ -2835,19 +2569,16 @@ function Chat({
           groupId: isGroupChat ? selectedChatId : undefined,
           content:
             messageType === "text"
-              ? encryptedTextPayload?.content || ""
-              : contentMap[messageType],
+              ? text.trim()
+              : pendingText || contentMap[messageType],
           messageType,
           fileUrl: uploadedFile?.fileUrl,
           storageProvider: uploadedFile?.storageProvider,
           storagePath: uploadedFile?.storagePath,
           storageBucket: uploadedFile?.storageBucket,
           replyTo: replyingToMessage?._id || replyingToMessage?.id || null,
-          encryption:
-            messageType === "text" || encryptedTextPayload?.encryption
-              ? encryptedTextPayload?.encryption || null
-              : null,
-          mediaEncryption: encryptedMediaPayload?.mediaEncryption || null,
+          encryption: null,
+          mediaEncryption: null,
           timestamp: new Date().toISOString(),
         },
         (ack) => {
@@ -2879,12 +2610,8 @@ function Chat({
               clientMessageId,
               clientTempId: clientMessageId,
               requestId,
-              content:
-                ack.message.content ||
-                (ack.message.encryption?.enabled ? resolvedDisplayContent : ""),
-              decryptedContent:
-                ack.message.decryptedContent ||
-                (ack.message.encryption?.enabled ? resolvedDisplayContent : pendingText || ""),
+              content: ack.message.content || resolvedDisplayContent,
+              decryptedContent: ack.message.decryptedContent || "",
               conversationKey:
                 ack.message.conversationKey || activeConversationKey,
               status: ack.message.status || "sent",
@@ -2908,52 +2635,11 @@ function Chat({
           uploadError: error?.message || "Failed to send",
         });
       }
-      if (
-        error?.code === "GROUP_E2EE_NO_READY_RECIPIENTS" ||
-        error?.code === "GROUP_E2EE_MISSING_MEMBERS" ||
-        error?.code === "DIRECT_E2EE_MISSING_RECIPIENT" ||
-        error?.message?.includes?.("Some group members have not enabled encrypted messaging yet.")
-      ) {
-        const missingRecipientIds = error?.missingRecipientIds || [];
-        const initialized = await waitForConversationKeys(missingRecipientIds);
-
-        if (initialized) {
-          removeLocalMessage(retryConversationKey, {
-            clientMessageId,
-          });
-          shouldRetryAfterKeyInit = true;
-        }
-      }
-
-      if (!shouldRetryAfterKeyInit) {
-        console.error("Unable to encrypt/send message:", error);
-      }
-      if (
-        !shouldRetryAfterKeyInit &&
-        (
-          error?.code === "GROUP_E2EE_MISSING_MEMBERS" ||
-          error?.code === "GROUP_E2EE_NO_READY_RECIPIENTS"
-        )
-      ) {
-        toast.error(
-          "Some group members have not initialized encrypted messaging yet. ConnectNow is waiting for them to come online and create keys."
-        );
-      } else if (!shouldRetryAfterKeyInit && error?.code === "DIRECT_E2EE_MISSING_RECIPIENT") {
-        toast.error(
-          "This contact has not initialized encrypted messaging yet. If they are online, ConnectNow is trying to prepare it now."
-        );
-      } else if (!shouldRetryAfterKeyInit) {
-        toast.error("Unable to send message.");
-      }
+      console.error("Unable to send message:", error);
+      toast.error("Unable to send message.");
     } finally {
         setIsSendingMessage(false);
         sendingMessageRef.current = false;
-      }
-
-      if (shouldRetryAfterKeyInit) {
-        queueMicrotask(() => {
-          handleSendMessage();
-        });
       }
   };
 
@@ -3348,6 +3034,9 @@ function Chat({
               }`}
             >
               <span>{moment(message.timestamp).format("LT")}</span>
+              {message.expiresAt ? (
+                <span>Expires {moment(message.expiresAt).fromNow()}</span>
+              ) : null}
               {isSender && renderStatusTick(message)}
             </div>
           </div>
@@ -3358,15 +3047,6 @@ function Chat({
 
   const renderMessageBody = (message) => {
     const attachmentCaption = String(message.decryptedContent || "").trim();
-    const isAwaitingDecryption =
-      Boolean(message?.encryption?.enabled) &&
-      (message?.decryptionPending ||
-        (!message?.decryptionError &&
-          !String(message?.decryptedContent || message?.content || "").trim()));
-    const hasDecryptionFailure =
-      Boolean(message?.encryption?.enabled) &&
-      Boolean(message?.decryptionError) &&
-      !message?.decryptionPending;
     const fallbackLabel =
       message.messageType === "audio"
         ? "Audio unavailable"
@@ -3376,10 +3056,7 @@ function Chat({
             ? "Image unavailable"
             : message.messageType === "document"
               ? "Document unavailable"
-            : "Message unavailable";
-    const decryptionFailureLabel =
-      String(message?.decryptionFailureLabel || "").trim() ||
-      "Unable to decrypt this message on this device.";
+            : "Old encrypted message";
 
     if (message.messageType === "system") {
       return (
@@ -3392,19 +3069,11 @@ function Chat({
     if (message.messageType === "text") {
       const displayText =
         String(message.decryptedContent || message.content || "").trim();
-      if (isAwaitingDecryption) {
-        return (
-          <div className="space-y-2">
-            <div className="h-3.5 w-32 animate-pulse rounded-full bg-white/10" />
-            <div className="h-3.5 w-20 animate-pulse rounded-full bg-white/10" />
-          </div>
-        );
-      }
 
-      if (hasDecryptionFailure || !displayText) {
+      if (!displayText) {
         return (
           <p className="text-sm italic text-slate-300/90">
-            {hasDecryptionFailure ? decryptionFailureLabel : "Message unavailable"}
+            Old encrypted message
           </p>
         );
       }
@@ -3426,13 +3095,11 @@ function Chat({
       );
     }
 
-    if (!message.fileUrl || hasDecryptionFailure) {
+    if (!message.fileUrl || message.mediaEncryption?.enabled) {
       return (
         <div className="space-y-2">
           <p className="text-sm italic text-slate-300/90">
-            {hasDecryptionFailure
-              ? decryptionFailureLabel
-              : fallbackLabel}
+            {message.mediaEncryption?.enabled ? "Old encrypted message" : fallbackLabel}
           </p>
           {attachmentCaption ? (
             <p className="whitespace-pre-wrap break-words text-sm leading-6">
@@ -3440,20 +3107,6 @@ function Chat({
             </p>
           ) : null}
         </div>
-      );
-    }
-
-    if (message.mediaEncryption?.enabled) {
-      return (
-        <EncryptedMediaMessage
-          message={message}
-          currentUserId={userInfo.id}
-          isMobile={isMobile}
-          onOpenImage={(imageUrl) => {
-            setSelectedImage(imageUrl);
-            setIsModalOpen(true);
-          }}
-        />
       );
     }
 
@@ -3534,7 +3187,7 @@ function Chat({
     }
 
     if (message.uploadStatus === "processing") {
-      return <span className="text-[10px] text-cyan-300">Encrypting...</span>;
+      return <span className="text-[10px] text-cyan-300">Processing...</span>;
     }
 
     if (message.uploadStatus === "failed") {
@@ -3584,6 +3237,12 @@ function Chat({
     : isSelectedUserOnline
       ? "Online"
       : "Offline";
+  const disappearingDuration = disappearingSettings.disappearingMessagesEnabled
+    ? Number(disappearingSettings.disappearingMessageDuration || 0)
+    : null;
+  const disappearingLabel = disappearingDuration
+    ? `Messages disappear after ${getDisappearingDurationLabel(disappearingDuration)}`
+    : "";
 
   const birthdayChip =
     !isMobile && !isGroupChat && selectedBirthdayReminder ? (
@@ -3608,11 +3267,7 @@ function Chat({
       </div>
     ) : null;
 
-  const decryptingBanner = isDecryptingMessages ? (
-    <div className="border-b border-cyan-400/10 bg-cyan-400/6 px-4 py-2 text-xs text-cyan-100">
-      Decrypting secure messages in the background...
-    </div>
-  ) : null;
+  const decryptingBanner = null;
 
   if (!userInfo) {
     return (
@@ -3647,6 +3302,7 @@ function Chat({
             birthdayChip={birthdayChip}
             warningBanner={warningBanner}
             decryptingBanner={decryptingBanner}
+            disappearingLabel={disappearingLabel}
             desktopActions={
               <>
                 {!isGroupChat && (
@@ -3674,6 +3330,16 @@ function Chat({
                         : "Verify"}
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex"
+                  onClick={() => setShowDisappearingSettings(true)}
+                  title="Disappearing messages"
+                >
+                  {disappearingDuration
+                    ? getDisappearingDurationLabel(disappearingDuration)
+                    : "Off"}
+                </button>
                 <button
                   type="button"
                   className="themed-panel-soft hidden h-10 w-10 items-center justify-center rounded-2xl transition hover:text-white md:flex"
@@ -3811,6 +3477,17 @@ function Chat({
                               : "Verify security"}
                           </button>
                         )}
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
+                          onClick={() => {
+                            setShowMobileHeaderMenu(false);
+                            setShowDisappearingSettings(true);
+                          }}
+                        >
+                          <CalendarClock className="h-4 w-4" />
+                          Disappearing messages
+                        </button>
                         <button
                           type="button"
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
@@ -4174,6 +3851,62 @@ function Chat({
           </MessageComposer>
         }
       />
+
+      {showDisappearingSettings &&
+        createPortal(
+          <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
+            <button
+              type="button"
+              aria-label="Close disappearing messages settings"
+              className="absolute inset-0 cursor-default"
+              onClick={() => setShowDisappearingSettings(false)}
+            />
+            <div className="themed-modal-surface relative z-10 w-full max-w-md rounded-t-[28px] border border-white/10 p-4 shadow-[0_24px_70px_rgba(2,8,23,0.32)] md:rounded-[28px] md:p-5">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <p className="themed-title text-lg font-semibold">
+                    Disappearing Messages
+                  </p>
+                  <p className="themed-subtitle mt-1 text-sm">
+                    Applies only to new messages in this chat.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="themed-panel-soft rounded-full p-2"
+                  onClick={() => setShowDisappearingSettings(false)}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid gap-2">
+                {DISAPPEARING_MESSAGE_OPTIONS.map((option) => {
+                  const isSelected =
+                    (option.value === null && !disappearingDuration) ||
+                    option.value === disappearingDuration;
+
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      disabled={disappearingSettingsLoading}
+                      onClick={() => updateDisappearingSettings(option.value)}
+                      className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left text-sm transition ${
+                        isSelected
+                          ? "border border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
+                          : "themed-panel-soft hover:bg-white/10"
+                      }`}
+                    >
+                      <span>{option.label}</span>
+                      {isSelected ? <Check className="h-4 w-4" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <Suspense fallback={null}>
         <CreatePollModal

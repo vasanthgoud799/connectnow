@@ -8,6 +8,7 @@ import {
 } from "../middlewares/SecurityMiddleware.js";
 import {
   validateConversationKeyPayload,
+  validateDisappearingMessagesSettings,
   validateMessageAction,
   validateMessageConversationRequest,
   validateMessageIdParam,
@@ -16,6 +17,7 @@ import {
 } from "../middlewares/ValidationMiddleware.js";
 import {
   addReaction,
+  getDisappearingMessageSettings,
   getMessageById,
   getChats,
   getMessages,
@@ -27,6 +29,7 @@ import {
   searchMessages,
   togglePinnedMessage,
   toggleStarred,
+  updateDisappearingMessageSettings,
   updateMessage,
   uploadFile,
 } from "../controllers/MessagesController.js";
@@ -86,6 +89,20 @@ messagesRoutes.post("/search", verifyToken, validateMessageSearch, searchMessage
 messagesRoutes.get("/chats", verifyToken, getChats);
 messagesRoutes.get("/starred", verifyToken, getStarredMessagesList);
 messagesRoutes.get("/pinned", verifyToken, validatePinnedMessagesQuery, getPinnedMessages);
+messagesRoutes.get(
+  "/disappearing-settings/:chatType/:chatId",
+  verifyToken,
+  validateDisappearingMessagesSettings,
+  getDisappearingMessageSettings
+);
+messagesRoutes.patch(
+  "/disappearing-settings/:chatType/:chatId",
+  verifyToken,
+  validateDisappearingMessagesSettings,
+  antiReplay,
+  userWriteRateLimiter,
+  updateDisappearingMessageSettings
+);
 messagesRoutes.post("/reactions", verifyToken, validateMessageAction, antiReplay, userWriteRateLimiter, addReaction);
 messagesRoutes.post(
   "/reactions/remove",

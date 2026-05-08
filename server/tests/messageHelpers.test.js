@@ -44,8 +44,14 @@ test("buildMessagesPaginationQuery includes before cursor when valid", () => {
   assert.deepEqual(query, {
     conversationKey: "user-1:user-2",
     deletedFor: { $ne: "user-1" },
+    $or: [
+      { expiresAt: { $exists: false } },
+      { expiresAt: null },
+      { expiresAt: query.$or[2].expiresAt },
+    ],
     createdAt: { $lt: before },
   });
+  assert.ok(query.$or[2].expiresAt.$gt instanceof Date);
 });
 
 test("buildMessagesPaginationQuery omits invalid before cursor", () => {
@@ -58,5 +64,11 @@ test("buildMessagesPaginationQuery omits invalid before cursor", () => {
   assert.deepEqual(query, {
     conversationKey: "group:abc",
     deletedFor: { $ne: "user-2" },
+    $or: [
+      { expiresAt: { $exists: false } },
+      { expiresAt: null },
+      { expiresAt: query.$or[2].expiresAt },
+    ],
   });
+  assert.ok(query.$or[2].expiresAt.$gt instanceof Date);
 });

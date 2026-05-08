@@ -1,7 +1,12 @@
 import Message from "../models/MessagesModel.js";
+import Chat from "../models/ChatModel.js";
 import Group from "../models/GroupModel.js";
 import { uploadMediaFile } from "../services/MediaStorageService.js";
+import { areUsersFriends } from "../services/FriendRequestService.js";
+import { getIO, getUserRoom } from "../socket.js";
 import {
+  ALLOWED_DISAPPEARING_DURATIONS,
+  buildNonExpiredMessageQuery,
   deleteMessage,
   editMessage,
   getChatSummariesForUser,
@@ -26,6 +31,7 @@ export const buildMessagesPaginationQuery = ({
   const query = {
     conversationKey,
     deletedFor: { $ne: userId },
+    ...buildNonExpiredMessageQuery(),
   };
 
   if (before instanceof Date && !Number.isNaN(before.getTime())) {
@@ -93,6 +99,169 @@ export const getMessages = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+const serializeDisappearingSettings = (record = {}) => ({
+  disappearingMessagesEnabled: Boolean(record.disappearingMessagesEnabled),
+  disappearingMessageDuration: record.disappearingMessagesEnabled
+    ? Number(record.disappearingMessageDuration || 0) || null
+    : null,
+});
+
+const resolveDisappearingSettingsTarget = async ({ userId, chatType, chatId }) => {
+  if (chatType === "group") {
+    const group = await Group.findById(chatId).select(
+      "members disappearingMessagesEnabled disappearingMessageDuration"
+    );
+    const member = group?.members?.find(
+      (item) => String(item.user?._id || item.user) === String(userId)
+    );
+
+    if (!group || !member) {
+      const error = new Error("Forbidden");
+      error.status = 403;
+      throw error;
+    }
+
+    return {
+      chatType,
+      group,
+      groupMember: member,
+      conversationKey: `group:${chatId}`,
+      participantIds: group.members.map((item) => String(item.user?._id || item.user)),
+    };
+  }
+
+  const conversationKey = getConversationKey(userId, chatId);
+  const chat = await Chat.findOne({ conversationKey }).select(
+    "participants disappearingMessagesEnabled disappearingMessageDuration"
+  );
+  const isParticipant = chat?.participants?.some(
+    (participant) => String(participant?._id || participant) === String(userId)
+  );
+  const canUseNewDirectChat = !chat && (await areUsersFriends(userId, chatId));
+
+  if (chat && !isParticipant) {
+    const error = new Error("Forbidden");
+    error.status = 403;
+    throw error;
+  }
+
+  if (!chat && !canUseNewDirectChat) {
+    const error = new Error("Forbidden");
+    error.status = 403;
+    throw error;
+  }
+
+  return {
+    chatType,
+    chat,
+    conversationKey,
+    participantIds: [String(userId), String(chatId)],
+  };
+};
+
+const emitDisappearingSettingsUpdated = ({ participantIds, payload }) => {
+  const io = getIO();
+  if (!io) return;
+
+  participantIds.forEach((participantId) => {
+    io.to(getUserRoom(String(participantId))).emit(
+      "disappearing_settings_updated",
+      payload
+    );
+  });
+};
+
+export const getDisappearingMessageSettings = async (req, res) => {
+  try {
+    const { chatType, chatId } = req.validated?.disappearingSettings || {};
+    const target = await resolveDisappearingSettingsTarget({
+      userId: req.userId,
+      chatType,
+      chatId,
+    });
+    const source = chatType === "group" ? target.group : target.chat;
+
+    return res.status(200).json({
+      chatType,
+      chatId,
+      conversationKey: target.conversationKey,
+      ...serializeDisappearingSettings(source),
+    });
+  } catch (error) {
+    return res
+      .status(error.status || 500)
+      .json({ message: error.message || "Unable to load disappearing settings." });
+  }
+};
+
+export const updateDisappearingMessageSettings = async (req, res) => {
+  try {
+    const { chatType, chatId, enabled, duration } =
+      req.validated?.disappearingSettings || {};
+    const target = await resolveDisappearingSettingsTarget({
+      userId: req.userId,
+      chatType,
+      chatId,
+    });
+    const nextDuration = enabled ? Number(duration) : null;
+
+    if (enabled && !ALLOWED_DISAPPEARING_DURATIONS.includes(nextDuration)) {
+      return res.status(400).json({ message: "Invalid disappearing message duration." });
+    }
+
+    let updatedRecord;
+    if (chatType === "group") {
+      const role = target.groupMember?.role || "member";
+      if (["owner", "admin"].includes(role) === false) {
+        return res.status(403).json({ message: "Only group admins can update this setting." });
+      }
+
+      updatedRecord = await Group.findByIdAndUpdate(
+        chatId,
+        {
+          $set: {
+            disappearingMessagesEnabled: enabled,
+            disappearingMessageDuration: nextDuration,
+          },
+        },
+        { new: true }
+      ).select("disappearingMessagesEnabled disappearingMessageDuration");
+    } else {
+      updatedRecord = await Chat.findOneAndUpdate(
+        { conversationKey: target.conversationKey },
+        {
+          $set: {
+            conversationKey: target.conversationKey,
+            chatType: "direct",
+            participants: target.participantIds,
+            disappearingMessagesEnabled: enabled,
+            disappearingMessageDuration: nextDuration,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      ).select("disappearingMessagesEnabled disappearingMessageDuration");
+    }
+
+    const settings = serializeDisappearingSettings(updatedRecord);
+    const payload = {
+      chatType,
+      chatId,
+      conversationKey: target.conversationKey,
+      ...settings,
+    };
+    emitDisappearingSettingsUpdated({
+      participantIds: target.participantIds,
+      payload,
+    });
+
+    return res.status(200).json(payload);
+  } catch (error) {
+    return res
+      .status(error.status || 500)
+      .json({ message: error.message || "Unable to update disappearing settings." });
   }
 };
 
@@ -165,10 +334,15 @@ export const searchMessages = async (req, res) => {
     const messages = await Message.find({
       conversationKey,
       deletedFor: { $ne: req.userId },
-      $or: [
-        { content: searchRegex },
-        { "meta.poll.question": searchRegex },
-        { "meta.poll.options.text": searchRegex },
+      $and: [
+        buildNonExpiredMessageQuery(),
+        {
+          $or: [
+            { content: searchRegex },
+            { "meta.poll.question": searchRegex },
+            { "meta.poll.options.text": searchRegex },
+          ],
+        },
       ],
     })
       .populate("sender", "id email firstName lastName image")

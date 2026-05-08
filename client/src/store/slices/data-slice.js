@@ -9,10 +9,6 @@ import {
   SECURITY_TRUSTED_DEVICES_ROUTE,
   UPCOMING_BIRTHDAYS_ROUTE,
 } from "@/utils/constants";
-import {
-  decryptChatSummaries,
-  hydrateChatSummariesFromCache,
-} from "@/crypto/e2eeService";
 
 let chatSummariesRequestId = 0;
 let chatSummariesPromise = null;
@@ -77,33 +73,16 @@ export const createDataSlice = (set, get) => ({
           withCredentials: true,
         });
         const rawChats = Array.isArray(response.data?.chats) ? response.data.chats : [];
-        const cachedChats = await hydrateChatSummariesFromCache({ chats: rawChats });
 
         if (requestId === chatSummariesRequestId) {
           set({
-            chatSummaries: cachedChats,
+            chatSummaries: rawChats,
             chatSummariesLoaded: true,
             chatSummariesLoading: false,
           });
         }
 
-        decryptChatSummaries({
-          chats: rawChats,
-          currentUserId,
-        })
-          .then((decryptedChats) => {
-            if (requestId !== chatSummariesRequestId) return;
-            set({
-              chatSummaries: decryptedChats,
-              chatSummariesLoaded: true,
-              chatSummariesLoading: false,
-            });
-          })
-          .catch((error) => {
-            console.error("Error decrypting chat summaries:", error);
-          });
-
-        return cachedChats;
+        return rawChats;
       } catch (error) {
         console.error("Error fetching chats:", error);
         if (requestId === chatSummariesRequestId) {

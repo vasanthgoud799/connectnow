@@ -273,6 +273,11 @@ const messageSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    expiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     deletedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -342,6 +347,7 @@ messageSchema.index({ group: 1, createdAt: 1 });
 messageSchema.index({ content: "text" });
 messageSchema.index({ "reactions.userId": 1, createdAt: -1 });
 messageSchema.index({ "pinnedByChat.conversationKey": 1, createdAt: -1 });
+messageSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 const Message = mongoose.model("Messages", messageSchema);
 export default Message;
