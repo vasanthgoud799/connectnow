@@ -26,7 +26,7 @@ const setViewportVars = () => {
 
   document.documentElement.style.setProperty(
     "--app-viewport-height",
-    `${visibleBottom}px`
+    `${rawViewportHeight}px`
   );
   document.documentElement.style.setProperty(
     "--app-layout-height",
