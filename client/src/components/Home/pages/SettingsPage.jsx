@@ -237,7 +237,7 @@ function SettingsPage() {
             </p>
           </div>
         }
-        bodyClassName="overflow-y-auto no-scrollbar"
+        bodyClassName="flex min-h-0 flex-col overflow-y-auto no-scrollbar"
       >
         <div className="themed-page-card rounded-[28px] p-4 md:p-5">
           <div className="grid gap-4 lg:grid-cols-2">
@@ -343,7 +343,7 @@ function SettingsPage() {
           </div>
 
           <div className="mt-4 grid gap-3">
-            {sessions.slice(0, 4).map((session) => (
+            {sessions.map((session) => (
               <div
                 key={session.id}
                 className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center md:justify-between"
@@ -398,7 +398,7 @@ function SettingsPage() {
 
           <div className="mt-4 grid gap-3">
             {trustedDevices.length ? (
-              trustedDevices.slice(0, 4).map((device) => (
+              trustedDevices.map((device) => (
                 <div
                   key={device._id}
                   className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"

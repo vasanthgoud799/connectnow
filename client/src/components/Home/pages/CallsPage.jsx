@@ -209,14 +209,6 @@ function CallsPage({ activeUsers = [], callState }) {
     fetchContacts,
     invalidateCalls,
   } = useAppStore();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
   useEffect(() => {
     fetchCalls();
   }, [fetchCalls]);
@@ -362,7 +354,7 @@ function CallsPage({ activeUsers = [], callState }) {
         </div>
       </div>
 
-      <div className={`scrollbar-hide space-y-1 pb-2 pr-1 ${isMobile ? "" : "min-h-0 flex-1 overflow-y-auto"}`}>
+      <div className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-y-auto pb-2 pr-1">
         {!callsLoaded && callsLoading ? (
           <StatePanel title="Loading calls..." description="Pulling your latest call history and contact availability." />
         ) : filteredCalls.length === 0 ? (

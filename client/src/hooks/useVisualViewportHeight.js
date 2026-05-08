@@ -11,11 +11,6 @@ const setViewportVars = () => {
     Math.round(visualViewport?.height || window.innerHeight || 0)
   );
   const layoutHeight = Math.max(320, Math.round(window.innerHeight || viewportHeight));
-  const viewportOffsetTop = Math.max(0, Math.round(visualViewport?.offsetTop || 0));
-  const keyboardOffset = Math.max(
-    0,
-    layoutHeight - viewportHeight - viewportOffsetTop
-  );
 
   document.documentElement.style.setProperty(
     "--app-viewport-height",
@@ -25,30 +20,44 @@ const setViewportVars = () => {
     "--app-layout-height",
     `${layoutHeight}px`
   );
-  document.documentElement.style.setProperty(
-    "--app-keyboard-offset",
-    `${keyboardOffset}px`
-  );
+  document.documentElement.style.setProperty("--app-keyboard-offset", "0px");
 };
 
 export function useVisualViewportHeight() {
   useEffect(() => {
-    setViewportVars();
+    let frameId = 0;
+    const update = () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      frameId = window.requestAnimationFrame(() => {
+        frameId = 0;
+        setViewportVars();
+      });
+    };
 
     const visualViewport = window.visualViewport;
-    const update = () => window.requestAnimationFrame(setViewportVars);
+    update();
 
     window.addEventListener("resize", update);
     window.addEventListener("orientationchange", update);
+    window.addEventListener("focusin", update);
+    window.addEventListener("focusout", update);
     visualViewport?.addEventListener("resize", update);
     visualViewport?.addEventListener("scroll", update);
 
     return () => {
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+
       window.removeEventListener("resize", update);
       window.removeEventListener("orientationchange", update);
+      window.removeEventListener("focusin", update);
+      window.removeEventListener("focusout", update);
       visualViewport?.removeEventListener("resize", update);
       visualViewport?.removeEventListener("scroll", update);
     };
   }, []);
 }
-

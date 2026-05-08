@@ -83,7 +83,7 @@ function ContactsPage({ onOpenChat }) {
         </button>
       </div>
 
-      <div className="grid auto-rows-min gap-4 pb-2 pr-1 md:min-h-0 md:flex-1 md:overflow-y-auto md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid min-h-0 flex-1 auto-rows-min gap-4 overflow-y-auto pb-2 pr-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {!contactsLoaded && contactsLoading ? (
           <>
             <div className="md:col-span-2 xl:col-span-3 2xl:col-span-4">

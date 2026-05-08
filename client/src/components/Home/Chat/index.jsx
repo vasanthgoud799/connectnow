@@ -1159,6 +1159,29 @@ function Chat({
 
   useHandleReceiveMessage(socket);
 
+  const keepLatestMessageVisible = useCallback(
+    (behavior = "auto") => {
+      if (!isMobile) return;
+
+      const composerInput = composerRef.current?.querySelector(
+        '[data-testid="chat-composer-input"]'
+      );
+
+      if (!composerInput || document.activeElement !== composerInput) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (isAtMessageBottom) {
+            messageListRef.current?.scrollToBottom(behavior);
+          }
+        });
+      });
+    },
+    [isAtMessageBottom, isMobile]
+  );
+
   useEffect(() => {
     const node = composerRef.current;
     if (!node) return undefined;
@@ -1933,6 +1956,30 @@ function Chat({
 
     return () => clearTimeout(timeoutId);
   }, [focusedMessageId, setFocusedMessageId]);
+
+  useEffect(() => {
+    if (!isMobile) return undefined;
+
+    const composerInput = composerRef.current?.querySelector(
+      '[data-testid="chat-composer-input"]'
+    );
+    if (!composerInput) return undefined;
+
+    const handleFocus = () => keepLatestMessageVisible("auto");
+    const handleViewportChange = () => keepLatestMessageVisible("auto");
+
+    composerInput.addEventListener("focus", handleFocus);
+    window.addEventListener("focusin", handleViewportChange);
+    window.visualViewport?.addEventListener("resize", handleViewportChange);
+    window.visualViewport?.addEventListener("scroll", handleViewportChange);
+
+    return () => {
+      composerInput.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focusin", handleViewportChange);
+      window.visualViewport?.removeEventListener("resize", handleViewportChange);
+      window.visualViewport?.removeEventListener("scroll", handleViewportChange);
+    };
+  }, [isMobile, keepLatestMessageVisible, resolvedConversationKey]);
 
   useEffect(() => {
     let intervalId;

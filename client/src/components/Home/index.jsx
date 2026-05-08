@@ -752,7 +752,7 @@ function Home({ activeUsers = [], callState }) {
             <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-indigo-500/8 blur-[140px]" />
           </div>
 
-          <div className="relative z-10 flex min-w-0 w-full">
+          <div className="relative z-10 flex h-full min-h-0 min-w-0 w-full">
             <aside className="themed-sidebar hidden w-[98px] flex-col justify-between border-r py-6 md:flex">
               <div className="flex flex-col items-center gap-8">
                 <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-gradient-to-br from-[#ef5da8] via-[#9b8cff] to-[#68d8ff] shadow-[0_18px_40px_rgba(104,216,255,0.22)]">
@@ -856,7 +856,7 @@ function Home({ activeUsers = [], callState }) {
                 />
               )}
 
-              <div className="flex min-h-0 flex-1">
+              <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                 {activeSection === "chats" ? (
                   isMobile ? (
                     <AnimatePresence mode="wait" initial={false}>
@@ -922,7 +922,7 @@ function Home({ activeUsers = [], callState }) {
                         initial={{ x: -30, opacity: 0 }}
                         animate={{ x: 0, opacity: 1 }}
                         transition={{ duration: 0.4 }}
-                        className="themed-main-panel border-r"
+                        className="themed-main-panel flex min-h-0 flex-col overflow-hidden border-r"
                       >
                         <List />
                       </motion.div>
@@ -969,7 +969,7 @@ function Home({ activeUsers = [], callState }) {
                     initial={{ opacity: 0, y: 18 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.35 }}
-                    className="themed-main-panel flex min-w-0 w-full max-w-full flex-1 overflow-hidden"
+                    className="themed-main-panel flex min-h-0 min-w-0 w-full max-w-full flex-1 overflow-hidden"
                   >
                     {activeSection === "contacts" && (
                       <Suspense fallback={<RouteLoader message="Loading contacts..." />}>

@@ -101,6 +101,8 @@
 
   body.app-shell-body {
     height: var(--app-viewport-height, 100dvh);
+    max-height: var(--app-viewport-height, 100dvh);
+    min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
     touch-action: manipulation;
@@ -108,6 +110,8 @@
 
   body.app-shell-body #root {
     height: var(--app-viewport-height, 100dvh);
+    max-height: var(--app-viewport-height, 100dvh);
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -579,8 +583,11 @@
 }
 
 .app-viewport-shell {
+  display: flex;
+  flex: 1 1 auto;
   height: var(--app-viewport-height, 100dvh);
   min-height: 0;
+  min-width: 0;
   max-height: var(--app-viewport-height, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
@@ -678,8 +685,8 @@
 }
 
 .chat-message-scroll {
-  scroll-padding-bottom: 1rem;
-  padding-bottom: 1rem !important;
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 1rem) !important;
 }
 
 .page-scaffold {
@@ -731,7 +738,7 @@
 .jump-to-latest-button {
   position: absolute;
   right: max(1rem, env(safe-area-inset-right));
-  bottom: calc(var(--chat-composer-height, 84px) + max(0.75rem, env(safe-area-inset-bottom)));
+  bottom: calc(env(safe-area-inset-bottom) + 1rem);
   z-index: 30;
 }
 
@@ -744,7 +751,7 @@
 
   .jump-to-latest-button {
     right: 2rem;
-    bottom: calc(var(--chat-composer-height, 84px) + 1.5rem);
+    bottom: 1.5rem;
   }
 
   .chat-composer-shell {

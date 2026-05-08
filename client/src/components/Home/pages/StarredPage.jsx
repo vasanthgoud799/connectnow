@@ -63,7 +63,7 @@ function StarredPage({ onOpenChat }) {
         </div>
       </div>
 
-      <div className="scrollbar-hide space-y-3 overflow-y-auto">
+      <div className="scrollbar-hide min-h-0 flex-1 space-y-3 overflow-y-auto">
         {loading ? (
           <div className="themed-page-card themed-subtitle rounded-[24px] p-5">
             Loading starred messages...
