@@ -737,7 +737,7 @@ function Home({ activeUsers = [], callState }) {
       </Suspense>
 
       {!isDirectCallVisible(callState) && (
-        <div className="app-viewport-shell absolute inset-0 flex w-full max-w-full overflow-hidden">
+        <div className="app-viewport-shell flex w-full max-w-full overflow-hidden">
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <motion.div
               animate={{ x: [0, 60, 0], y: [0, -40, 0] }}

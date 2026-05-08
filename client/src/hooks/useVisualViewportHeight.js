@@ -6,20 +6,22 @@ const setViewportVars = () => {
   }
 
   const visualViewport = window.visualViewport;
-  const rawViewportHeight = Math.max(
-    320,
-    Math.round(visualViewport?.height || window.innerHeight || 0)
-  );
+  const rawViewportHeight = Math.max(240, Math.round(visualViewport?.height || window.innerHeight || 0));
+  const rawViewportWidth = Math.max(240, Math.round(visualViewport?.width || window.innerWidth || 0));
   const viewportOffsetTop = Math.max(
     0,
     Math.round(visualViewport?.offsetTop || 0)
   );
+  const viewportOffsetLeft = Math.max(
+    0,
+    Math.round(visualViewport?.offsetLeft || 0)
+  );
   const layoutHeight = Math.max(
-    320,
+    240,
     Math.round(window.innerHeight || rawViewportHeight)
   );
   const visibleBottom = Math.max(
-    320,
+    240,
     Math.min(layoutHeight, rawViewportHeight + viewportOffsetTop)
   );
   const keyboardOffset = Math.max(0, layoutHeight - visibleBottom);
@@ -33,6 +35,18 @@ const setViewportVars = () => {
     `${layoutHeight}px`
   );
   document.documentElement.style.setProperty(
+    "--app-viewport-width",
+    `${rawViewportWidth}px`
+  );
+  document.documentElement.style.setProperty(
+    "--app-viewport-offset-top",
+    `${viewportOffsetTop}px`
+  );
+  document.documentElement.style.setProperty(
+    "--app-viewport-offset-left",
+    `${viewportOffsetLeft}px`
+  );
+  document.documentElement.style.setProperty(
     "--app-keyboard-offset",
     `${keyboardOffset}px`
   );
@@ -41,6 +55,7 @@ const setViewportVars = () => {
 export function useVisualViewportHeight() {
   useEffect(() => {
     let frameId = 0;
+    const timeoutIds = new Set();
     const update = () => {
       if (frameId) {
         window.cancelAnimationFrame(frameId);
@@ -51,14 +66,24 @@ export function useVisualViewportHeight() {
         setViewportVars();
       });
     };
+    const updateDuringViewportAnimation = () => {
+      update();
+      [60, 160, 320, 520].forEach((delay) => {
+        const timeoutId = window.setTimeout(() => {
+          timeoutIds.delete(timeoutId);
+          update();
+        }, delay);
+        timeoutIds.add(timeoutId);
+      });
+    };
 
     const visualViewport = window.visualViewport;
     update();
 
     window.addEventListener("resize", update);
-    window.addEventListener("orientationchange", update);
-    window.addEventListener("focusin", update);
-    window.addEventListener("focusout", update);
+    window.addEventListener("orientationchange", updateDuringViewportAnimation);
+    window.addEventListener("focusin", updateDuringViewportAnimation);
+    window.addEventListener("focusout", updateDuringViewportAnimation);
     visualViewport?.addEventListener("resize", update);
     visualViewport?.addEventListener("scroll", update);
 
@@ -66,11 +91,13 @@ export function useVisualViewportHeight() {
       if (frameId) {
         window.cancelAnimationFrame(frameId);
       }
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timeoutIds.clear();
 
       window.removeEventListener("resize", update);
-      window.removeEventListener("orientationchange", update);
-      window.removeEventListener("focusin", update);
-      window.removeEventListener("focusout", update);
+      window.removeEventListener("orientationchange", updateDuringViewportAnimation);
+      window.removeEventListener("focusin", updateDuringViewportAnimation);
+      window.removeEventListener("focusout", updateDuringViewportAnimation);
       visualViewport?.removeEventListener("resize", update);
       visualViewport?.removeEventListener("scroll", update);
     };

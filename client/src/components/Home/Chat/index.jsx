@@ -1055,9 +1055,14 @@ function Chat({
         return;
       }
 
+      const container = messageListRef.current?.container;
+      const isNearBottom = container
+        ? container.scrollHeight - container.scrollTop - container.clientHeight <= 180
+        : isAtMessageBottom;
+
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
-          if (isAtMessageBottom) {
+          if (isNearBottom) {
             messageListRef.current?.scrollToBottom(behavior);
           }
         });
@@ -1849,8 +1854,14 @@ function Chat({
     );
     if (!composerInput) return undefined;
 
-    const handleFocus = () => keepLatestMessageVisible("auto");
-    const handleViewportChange = () => keepLatestMessageVisible("auto");
+    const scheduleKeepVisible = () => {
+      keepLatestMessageVisible("auto");
+      [80, 180, 340, 560].forEach((delay) => {
+        window.setTimeout(() => keepLatestMessageVisible("auto"), delay);
+      });
+    };
+    const handleFocus = scheduleKeepVisible;
+    const handleViewportChange = scheduleKeepVisible;
 
     composerInput.addEventListener("focus", handleFocus);
     window.addEventListener("focusin", handleViewportChange);
