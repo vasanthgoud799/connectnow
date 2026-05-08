@@ -237,7 +237,7 @@ function SettingsPage() {
             </p>
           </div>
         }
-        bodyClassName="flex min-h-0 flex-col overflow-y-auto no-scrollbar"
+        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))] pr-1"
       >
         <div className="themed-page-card rounded-[28px] p-4 md:p-5">
           <div className="grid gap-4 lg:grid-cols-2">

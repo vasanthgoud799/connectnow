@@ -6,21 +6,36 @@ const setViewportVars = () => {
   }
 
   const visualViewport = window.visualViewport;
-  const viewportHeight = Math.max(
+  const rawViewportHeight = Math.max(
     320,
     Math.round(visualViewport?.height || window.innerHeight || 0)
   );
-  const layoutHeight = Math.max(320, Math.round(window.innerHeight || viewportHeight));
+  const viewportOffsetTop = Math.max(
+    0,
+    Math.round(visualViewport?.offsetTop || 0)
+  );
+  const layoutHeight = Math.max(
+    320,
+    Math.round(window.innerHeight || rawViewportHeight)
+  );
+  const visibleBottom = Math.max(
+    320,
+    Math.min(layoutHeight, rawViewportHeight + viewportOffsetTop)
+  );
+  const keyboardOffset = Math.max(0, layoutHeight - visibleBottom);
 
   document.documentElement.style.setProperty(
     "--app-viewport-height",
-    `${viewportHeight}px`
+    `${visibleBottom}px`
   );
   document.documentElement.style.setProperty(
     "--app-layout-height",
     `${layoutHeight}px`
   );
-  document.documentElement.style.setProperty("--app-keyboard-offset", "0px");
+  document.documentElement.style.setProperty(
+    "--app-keyboard-offset",
+    `${keyboardOffset}px`
+  );
 };
 
 export function useVisualViewportHeight() {

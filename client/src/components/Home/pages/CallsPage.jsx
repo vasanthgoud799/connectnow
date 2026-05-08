@@ -354,7 +354,7 @@ function CallsPage({ activeUsers = [], callState }) {
         </div>
       </div>
 
-      <div className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-y-auto pb-2 pr-1">
+      <div className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))] pr-1">
         {!callsLoaded && callsLoading ? (
           <StatePanel title="Loading calls..." description="Pulling your latest call history and contact availability." />
         ) : filteredCalls.length === 0 ? (
