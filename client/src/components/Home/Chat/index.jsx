@@ -1456,13 +1456,6 @@ function Chat({
       .sort((a, b) => Number(b.isOnline) - Number(a.isOnline));
   }, [activeUsers, isGroupChat, selectedChatData?.members, userInfo?.id]);
 
-  const waitForConversationKeys = async (missingRecipientIds = []) => {
-    return false;
-  };
-
-  useEffect(() => {
-    setGroupE2eeBlockedMembers([]);
-  }, [isGroupChat, selectedChatId, userInfo?.id]);
   const canMessageDirectUser =
     isGroupChat ||
     (userInfo?.friends || []).some((friendId) => String(friendId) === String(selectedChatId));
