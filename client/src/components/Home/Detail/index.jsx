@@ -562,7 +562,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
     }
   };
 
-  const initiateCall = (callType = "video") => {
+  const initiateCall = async (callType = "video") => {
     const selectedChatId = selectedChatData?._id || selectedChatData?.id;
     const selectedChatEmail = selectedChatData?.email;
     const selectedChatName = [selectedChatData?.firstName, selectedChatData?.lastName]
@@ -597,17 +597,22 @@ function Detail({ onClose, activeUsers = [], callState }) {
       return;
     }
 
-    apiClient
-      .post(
+    let callLogId = null;
+    try {
+      const response = await apiClient.post(
         CALLS_LOG_ROUTE,
         { recipientId: selectedChatId, type: callType, status: "initiated" },
         { withCredentials: true }
-      )
-      .catch((error) => console.error("Error logging call:", error));
+      );
+      callLogId = response.data?.call?._id || response.data?.call?.id || null;
+    } catch (error) {
+      console.error("Error logging call:", error);
+    }
 
     callToOtherUser(
       {
         userId: selectedChatId,
+        callLogId,
         socketId: activeCallUser?.socketId,
         username: activeCallUser?.username,
         displayName: activeCallUser?.displayName,
@@ -895,7 +900,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
   );
 
   return (
-    <div className="themed-shell themed-chat-canvas flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="themed-shell isolate flex h-full min-h-0 flex-col overflow-hidden bg-[#07111f]">
       <MobileSafeHeader>
         <button
           type="button"

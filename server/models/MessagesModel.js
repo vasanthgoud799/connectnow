@@ -160,6 +160,11 @@ const messageSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    clientMessageId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     chatType: {
       type: String,
       enum: ["direct", "group"],

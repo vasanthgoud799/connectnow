@@ -42,6 +42,14 @@ const getConversationKeyForSelection = (chatSummaries = [], selectedChatData, cu
   );
 };
 
+const getLastMessageClientId = (lastMessage = {}) =>
+  String(
+    lastMessage.clientMessageId ||
+      lastMessage.clientTempId ||
+      lastMessage.requestId ||
+      ""
+  );
+
 export const createChatSlice = (set, get) => ({
   selectedChatData: undefined,
   selectedConversationKey: undefined,
@@ -257,13 +265,21 @@ export const createChatSlice = (set, get) => ({
             normalizedNextMessage
           ),
         },
-        chatSummaries: state.chatSummaries.map((chat) =>
-          String(chat.lastMessage?.messageId) === nextMessageId
+      chatSummaries: state.chatSummaries.map((chat) =>
+          String(chat.lastMessage?.messageId) === nextMessageId ||
+          (getLastMessageClientId(chat.lastMessage) &&
+            getLastMessageClientId(chat.lastMessage) ===
+              (normalizedNextMessage.clientMessageId ||
+                normalizedNextMessage.clientTempId ||
+                normalizedNextMessage.requestId))
             ? {
                 ...chat,
                 lastMessage: {
                   ...chat.lastMessage,
                   messageId: nextMessageId,
+                  clientMessageId: normalizedNextMessage.clientMessageId,
+                  clientTempId: normalizedNextMessage.clientTempId,
+                  requestId: normalizedNextMessage.requestId,
                   sender: normalizedNextMessage.sender,
                   content: normalizedNextMessage.content,
                   messageType: normalizedNextMessage.messageType,
@@ -380,6 +396,9 @@ export const createChatSlice = (set, get) => ({
         ...existingChat,
         lastMessage: {
           messageId,
+          clientMessageId: normalizedMessage.clientMessageId,
+          clientTempId: normalizedMessage.clientTempId,
+          requestId: normalizedMessage.requestId,
           sender: normalizedMessage.sender,
           content: normalizedMessage.content,
           messageType: normalizedMessage.messageType,
@@ -406,6 +425,9 @@ export const createChatSlice = (set, get) => ({
         participant: otherParticipant,
         lastMessage: {
           messageId,
+          clientMessageId: normalizedMessage.clientMessageId,
+          clientTempId: normalizedMessage.clientTempId,
+          requestId: normalizedMessage.requestId,
           sender: normalizedMessage.sender,
           content: normalizedMessage.content,
           messageType: normalizedMessage.messageType,

@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
-import VirtualStack from "@/components/ui/VirtualStack";
 import RouteLoader from "@/components/ui/RouteLoader";
 import StatePanel from "@/components/ui/StatePanel";
 import ChatListItem from "./ChatListItem";
@@ -133,8 +132,8 @@ function ChatList({ onOpenChat }) {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-y-auto px-4 no-scrollbar pb-24 pt-3 md:px-5 md:pb-5">
-     <div className="flex flex-1 flex-col">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-4 pb-24 pt-3 md:px-5 md:pb-5">
+     <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-4 md:mb-0">
         <div className="mb-4 flex items-center gap-2.5 md:mb-5 md:gap-3">
           <div className="relative flex-1">
@@ -204,7 +203,7 @@ function ChatList({ onOpenChat }) {
         </button>
         </div>
 
-        <div className="pr-1 md:min-h-0 md:flex-1">
+        <div className="min-h-0 flex-1 pr-1">
           {!chatSummariesLoaded && chatSummariesLoading ? (
             <StatePanel
               title="Loading conversations..."
@@ -222,20 +221,14 @@ function ChatList({ onOpenChat }) {
               dashed
             />
           ) : (
-            <VirtualStack
-              className="h-[calc(100dvh-22rem)] min-h-[260px] overflow-y-auto no-scrollbar scroll-smooth md:h-full"
-              contentClassName="space-y-3"
-              estimateSize={() => 92}
-              getItemKey={(chat) => chat.conversationKey}
-              items={filteredChats}
-              overscan={8}
-              renderItem={(chat) => {
+            <div className="no-scrollbar h-full min-h-[260px] space-y-3 overflow-y-auto scroll-smooth pr-1">
+              {filteredChats.map((chat) => {
                 const participant = chat.participant || {};
                 const isGroup = chat.chatType === "group";
                 const group = chat.group || {};
 
                 return (
-                  <div className="pb-3">
+                  <div key={chat.conversationKey}>
                     <ChatListItem
                       chat={chat}
                       isActive={selectedConversationKey === chat.conversationKey}
@@ -284,8 +277,8 @@ function ChatList({ onOpenChat }) {
                     />
                   </div>
                 );
-              }}
-            />
+              })}
+            </div>
           )}
         </div>
       </div>

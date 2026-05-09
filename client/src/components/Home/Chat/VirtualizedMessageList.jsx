@@ -1,12 +1,6 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import moment from "moment";
 
-import VirtualStack from "@/components/ui/VirtualStack";
-
-const DATE_ROW_HEIGHT = 40;
-const MESSAGE_ROW_HEIGHT_DESKTOP = 156;
-const MESSAGE_ROW_HEIGHT_MOBILE = 176;
-
 const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
   {
     isMobile = false,
@@ -15,7 +9,7 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
   },
   ref
 ) {
-  const virtualRef = useRef(null);
+  const containerRef = useRef(null);
 
   const rows = useMemo(() => {
     const nextRows = [];
@@ -44,63 +38,60 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
     return nextRows;
   }, [messages]);
 
-  const messageIdToRowIndex = useMemo(() => {
-    const nextMap = new Map();
-    rows.forEach((row, index) => {
-      if (row.type === "message") {
-        nextMap.set(String(row.message._id || row.message.id), index);
-      }
-    });
-    return nextMap;
-  }, [rows]);
-
   useImperativeHandle(
     ref,
     () => ({
-      container: virtualRef.current?.container || null,
+      container: containerRef.current,
       scrollToBottom: (behavior = "smooth") => {
-        virtualRef.current?.scrollToBottom(behavior);
+        const container = containerRef.current;
+        if (!container) return;
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior,
+        });
       },
       scrollToMessageId: (messageId) => {
-        const rowIndex = messageIdToRowIndex.get(String(messageId));
-        if (rowIndex === undefined) return;
-        virtualRef.current?.scrollToIndex(rowIndex, { align: "center" });
+        const container = containerRef.current;
+        if (!container) return;
+        const escapedMessageId =
+          typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(String(messageId))
+            : String(messageId).replace(/"/g, '\\"');
+        container
+          .querySelector(`[data-message-id="${escapedMessageId}"]`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
       },
     }),
-    [messageIdToRowIndex]
+    []
   );
 
   return (
-    <VirtualStack
-      ref={virtualRef}
+    <div
+      ref={containerRef}
       className={`chat-message-scroll scrollbar-hide flex-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-none touch-pan-y ${
         isMobile ? "px-3 py-3 pb-5" : "px-7 py-8 pb-10"
       }`}
-      contentClassName={`w-full ${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}
-      estimateSize={(row) =>
-        row.type === "date"
-          ? DATE_ROW_HEIGHT
-          : isMobile
-            ? MESSAGE_ROW_HEIGHT_MOBILE
-            : MESSAGE_ROW_HEIGHT_DESKTOP
-      }
-      getItemKey={(row) => row.id}
-      items={rows}
-      overscan={10}
-      renderItem={(row) => {
-        if (row.type === "date") {
-          return (
-            <div className="flex justify-center py-2">
-              <div className="themed-date-pill rounded-full px-4 py-1.5 text-xs">
-                {row.label}
+    >
+      <div className={`w-full ${isMobile ? "max-w-full" : "mx-auto max-w-5xl"}`}>
+        {rows.map((row) => {
+          if (row.type === "date") {
+            return (
+              <div key={row.id} className="flex justify-center py-2">
+                <div className="themed-date-pill rounded-full px-4 py-1.5 text-xs">
+                  {row.label}
+                </div>
               </div>
+            );
+          }
+
+          return (
+            <div key={row.id}>
+              {renderMessageRow(row.message, row.index)}
             </div>
           );
-        }
-
-        return renderMessageRow(row.message, row.index);
-      }}
-    />
+        })}
+      </div>
+    </div>
   );
 });
 

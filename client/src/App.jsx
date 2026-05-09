@@ -10,7 +10,6 @@ import {
 } from "./lib/api-client";
 import { CLERK_SYNC_ROUTE } from "./utils/constants";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
-import { ensureUserE2EEIdentity } from "./crypto/e2eeService";
 import RouteLoader from "./components/ui/RouteLoader";
 
 const Auth = lazy(() => import("./components/Auth"));
@@ -211,14 +210,6 @@ function App() {
       registerAppSessionRefreshHandler(null);
     };
   }, [getToken, isLoaded, isSignedIn, setUserInfo, user?.id]);
-
-  useEffect(() => {
-    if (!authReady || !isSignedIn || !userInfo?.id) return;
-
-    ensureUserE2EEIdentity(userInfo).catch((error) => {
-      console.error("Error preparing E2EE identity:", error);
-    });
-  }, [authReady, isSignedIn, userInfo]);
 
   return (
     <>

@@ -254,20 +254,6 @@ export const updateDisappearingMessageSettings = async (req, res) => {
       ...settings,
     };
 
-    if (enabled) {
-      await Message.updateMany(
-        {
-          conversationKey: target.conversationKey,
-          deletedFor: { $ne: req.userId },
-        },
-        {
-          $addToSet: {
-            deletedFor: req.userId,
-          },
-        }
-      );
-    }
-
     emitDisappearingSettingsUpdated({
       participantIds: target.participantIds,
       payload,
@@ -302,6 +288,20 @@ export const markMessagesSeen = async (req, res) => {
 
     if (!conversationKey) {
       return res.status(400).json({ message: "conversationKey or userId is required." });
+    }
+
+    if (String(conversationKey).startsWith("group:")) {
+      const groupId = String(conversationKey).slice("group:".length);
+      const group = await Group.findById(groupId).select("members");
+      const isMember = group?.members?.some(
+        (member) => String(member.user?._id || member.user) === String(req.userId)
+      );
+
+      if (!group || !isMember) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    } else if (!String(conversationKey).split(":").includes(String(req.userId))) {
+      return res.status(403).json({ message: "Forbidden" });
     }
 
     const updates = await markConversationSeen({

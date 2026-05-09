@@ -258,12 +258,14 @@ function CallsPage({ activeUsers = [], callState }) {
       return;
     }
 
+    let callLogId = null;
     try {
-      await apiClient.post(
+      const response = await apiClient.post(
         CALLS_LOG_ROUTE,
         { recipientId: contact._id, type, status: "initiated" },
         { withCredentials: true }
       );
+      callLogId = response.data?.call?._id || response.data?.call?.id || null;
       invalidateCalls();
       fetchCalls({ force: true });
     } catch (error) {
@@ -274,6 +276,7 @@ function CallsPage({ activeUsers = [], callState }) {
     callToOtherUser(
       {
         userId: contact._id,
+        callLogId,
         socketId: onlineMatch?.socketId,
         username: contact.firstName,
         displayName:

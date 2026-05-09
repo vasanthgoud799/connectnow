@@ -45,6 +45,7 @@ function SettingsPage() {
     trustedDevices,
     securityEvents,
     adminDashboard,
+    securitySnapshotLoading,
     setSessions,
     fetchSecuritySnapshot,
     browserNotificationsEnabled,
@@ -334,7 +335,15 @@ function SettingsPage() {
           </div>
 
           <div className="mt-4 grid gap-3">
-            {sessions.map((session) => (
+            {securitySnapshotLoading ? (
+              <StatePanel
+                title="Loading sessions"
+                description="Checking your active signed-in devices."
+                className="rounded-[20px] bg-transparent px-0 py-2 text-left"
+                center={false}
+              />
+            ) : sessions.length ? (
+              sessions.map((session) => (
               <div
                 key={session.id}
                 className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center md:justify-between"
@@ -357,7 +366,16 @@ function SettingsPage() {
                   </button>
                 )}
               </div>
-            ))}
+              ))
+            ) : (
+              <StatePanel
+                title="No active sessions"
+                description="Session details will appear here when the server reports them."
+                dashed
+                className="rounded-[20px] bg-transparent px-0 py-2 text-left"
+                center={false}
+              />
+            )}
           </div>
         </div>
 

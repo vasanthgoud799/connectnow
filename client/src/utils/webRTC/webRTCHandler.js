@@ -16,7 +16,7 @@ import {
   setMessage,
 } from "../../store/actions/callActions";
 import { apiClient } from "../../lib/api-client";
-import { CALLS_ICE_CONFIG_ROUTE } from "../constants.js";
+import { CALLS_ICE_CONFIG_ROUTE, CALLS_STATUS_ROUTE } from "../constants.js";
 import * as wss from "../wssConnection/wssConnection";
 
 const preOfferAnswers = {
@@ -71,6 +71,8 @@ const callContext = {
   screenSharingStream: null,
   remoteMediaStream: null,
   isCaller: false,
+  callLogId: null,
+  callConnectedAt: null,
   outgoingCallTimeoutId: null,
   answerWaitTimeoutId: null,
   iceRestartAttempts: 0,
@@ -141,6 +143,34 @@ const stopStatsCollection = () => {
 };
 
 const getCallState = () => store.getState().call;
+
+const updateCallLogStatus = async (status) => {
+  if (!callContext.callLogId) return;
+
+  try {
+    const endedAt = status === "ended" ? new Date() : null;
+    const durationSeconds =
+      status === "ended" && callContext.callConnectedAt
+        ? Math.max(
+            0,
+            Math.round((endedAt.getTime() - callContext.callConnectedAt.getTime()) / 1000)
+          )
+        : undefined;
+
+    await apiClient.patch(
+      CALLS_STATUS_ROUTE,
+      {
+        callId: callContext.callLogId,
+        status,
+        endedAt,
+        durationSeconds,
+      },
+      { withCredentials: true }
+    );
+  } catch (error) {
+    console.error("Error updating call log:", error);
+  }
+};
 
 const getFirstTrack = (stream, kind) =>
   stream?.getTracks?.().find((track) => track.kind === kind) || null;
@@ -679,6 +709,9 @@ const createPeerConnection = ({ createOutboundDataChannel = false } = {}) => {
     if (nextState === "connected") {
       clearCallTimers();
       callContext.iceRestartAttempts = 0;
+      if (!callContext.callConnectedAt) {
+        callContext.callConnectedAt = new Date();
+      }
       updateCallDiagnostics({
         connectionState: nextState,
         reconnecting: false,
@@ -993,11 +1026,14 @@ export const callToOtherUser = async (calleeDetails, callType = "video") => {
     return;
   }
 
+  callContext.callLogId = calleeDetails.callLogId || null;
+  callContext.callConnectedAt = null;
   const isReady = await getLocalStream(callType, {
     createOutboundDataChannel: true,
   });
 
   if (!isReady) {
+    void updateCallLogStatus("rejected");
     setCallRejectedState(
       formatMediaErrorMessage(null, callType)
     );
@@ -1040,6 +1076,7 @@ export const callToOtherUser = async (calleeDetails, callType = "video") => {
     reconnecting: false,
   });
   callContext.outgoingCallTimeoutId = setTimeout(() => {
+    void updateCallLogStatus("missed");
     setCallRejectedState("Call timed out before the other user answered.");
     resetCallDataAfterHangUp();
   }, 30000);
@@ -1054,6 +1091,7 @@ export const callToOtherUser = async (calleeDetails, callType = "video") => {
       imageUrl: store.getState().Home.imageUrl,
     },
     callType,
+    callLogId: callContext.callLogId,
   });
 };
 
@@ -1066,6 +1104,8 @@ export const handlePreOffer = (data) => {
     callContext.remoteSocketId = data.callerSocketId || null;
     callContext.callType = data.callType || "video";
     callContext.isCaller = false;
+    callContext.callLogId = data.callLogId || null;
+    callContext.callConnectedAt = null;
 
     store.dispatch(setCallerUsername(normalizeDisplayName(data.callerUsername)));
     store.dispatch(setCallerImage(normalizeImage(data.callerImage)));
@@ -1107,6 +1147,7 @@ export const acceptIncomingCallRequest = async () => {
     sessionId: callContext.sessionId,
   });
 
+  void updateCallLogStatus("accepted");
   clearCallTimers();
   updateCallDiagnostics({
     statusMessage: "Connecting...",
@@ -1120,6 +1161,7 @@ export const rejectIncomingCallRequest = () => {
     answer: preOfferAnswers.CALL_REJECTED,
     sessionId: callContext.sessionId,
   });
+  void updateCallLogStatus("rejected");
   resetCallData();
 };
 
@@ -1157,6 +1199,7 @@ export const handlePreOfferAnswer = async (data) => {
   }
 
   if (data.answer === preOfferAnswers.CALL_ACCEPTED) {
+    void updateCallLogStatus("accepted");
     if (callContext.outgoingCallTimeoutId) {
       clearTimeout(callContext.outgoingCallTimeoutId);
       callContext.outgoingCallTimeoutId = null;
@@ -1170,6 +1213,8 @@ export const handlePreOfferAnswer = async (data) => {
     rejectionReason = "This user is already in another call.";
   } else if (data.answer === preOfferAnswers.CALL_NOT_AVAILABLE) {
     rejectionReason = "Callee is not able to pick up the call right now.";
+  } else if (data.answer === preOfferAnswers.CALL_REJECTED) {
+    void updateCallLogStatus("rejected");
   }
 
   setCallRejectedState(rejectionReason);
@@ -1196,6 +1241,9 @@ export const handleOffer = async (data) => {
   });
 
   await flushPendingCandidates();
+  if (!callContext.callConnectedAt) {
+    callContext.callConnectedAt = new Date();
+  }
   updateCallDiagnostics({
     statusMessage: "Connected",
     connectionState: "connected",
@@ -1216,6 +1264,9 @@ export const handleAnswer = async (data) => {
   await flushPendingCandidates();
   clearCallTimers();
   callContext.iceRestartAttempts = 0;
+  if (!callContext.callConnectedAt) {
+    callContext.callConnectedAt = new Date();
+  }
   updateCallDiagnostics({
     statusMessage: "Connected",
     connectionState: "connected",
@@ -1363,6 +1414,7 @@ export const handleUserHangedUp = (data = {}) => {
     return;
   }
 
+  void updateCallLogStatus("ended");
   resetCallDataAfterHangUp();
 };
 
@@ -1371,6 +1423,7 @@ export const hangUp = () => {
     sessionId: callContext.sessionId,
   });
 
+  void updateCallLogStatus("ended");
   resetCallDataAfterHangUp();
 };
 
@@ -1403,6 +1456,8 @@ export const resetCallData = () => {
   callContext.callType = "video";
   callContext.pendingCandidates = [];
   callContext.isCaller = false;
+  callContext.callLogId = null;
+  callContext.callConnectedAt = null;
   callContext.iceRestartAttempts = 0;
   callContext.remoteMediaStream = null;
   callContext.preferredFacingMode = "user";

@@ -924,6 +924,8 @@ export const markMessagesDelivered = async ({ recipientId, conversationKey }) =>
     recipient: recipientId,
     chatType: "direct",
     status: "sent",
+    deletedFor: { $ne: ensureObjectId(recipientId) },
+    ...buildNonExpiredMessageQuery(),
   };
 
   if (conversationKey) {
@@ -985,6 +987,8 @@ export const markMessageDelivered = async ({ messageId, recipientId }) => {
       recipient: recipientId,
       chatType: "direct",
       status: "sent",
+      deletedFor: { $ne: ensureObjectId(recipientId) },
+      ...buildNonExpiredMessageQuery(),
     },
     {
       $set: {
@@ -1040,9 +1044,12 @@ export const markConversationSeen = async ({ recipientId, conversationKey }) => 
         conversationKey,
         chatType: "group",
         sender: { $ne: ensureObjectId(recipientId) },
+        deletedFor: { $ne: ensureObjectId(recipientId) },
+        "readBy.userId": { $ne: ensureObjectId(recipientId) },
+        ...buildNonExpiredMessageQuery(),
       },
       {
-        $addToSet: {
+        $push: {
           readBy: {
             userId: ensureObjectId(recipientId),
             readAt: seenAt,
@@ -1058,7 +1065,9 @@ export const markConversationSeen = async ({ recipientId, conversationKey }) => 
     recipient: recipientId,
     conversationKey,
     chatType: "direct",
+    deletedFor: { $ne: ensureObjectId(recipientId) },
     status: { $ne: "seen" },
+    ...buildNonExpiredMessageQuery(),
   }).select("_id sender");
 
   if (pendingMessages.length) {

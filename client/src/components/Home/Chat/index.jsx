@@ -26,9 +26,6 @@ import {
   Sparkles,
   Search,
   SendHorizonal,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldQuestion,
   Smile,
   Star,
   Trash2,
@@ -67,7 +64,6 @@ import {
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants.js";
 import { isDirectCallBusy } from "@/store/actions/callActions";
-import { useTrustStatus } from "./hooks/useTrustStatus";
 import {
   areSameMessage,
   mergeMessages,
@@ -99,6 +95,35 @@ const DISAPPEARING_MESSAGE_OPTIONS = [
   { label: "24 hours", value: 86400 },
   { label: "7 days", value: 604800 },
 ];
+
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+const SUPPORTED_ATTACHMENT_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-matroska",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/webm",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/ogg",
+  "audio/mp4",
+  "audio/x-m4a",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+]);
 
 function getDisappearingDurationLabel(duration) {
   return (
@@ -200,6 +225,26 @@ function normalizeAttachmentKind(type = "", fileType = "") {
   }
 
   return "document";
+}
+
+function validateAttachmentFile(file) {
+  if (!file) {
+    return { ok: false, message: "Choose a file to send." };
+  }
+
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return { ok: false, message: "File is too large. Maximum size is 50MB." };
+  }
+
+  const mimeType = String(file.type || "").toLowerCase();
+  if (!mimeType || !SUPPORTED_ATTACHMENT_TYPES.has(mimeType)) {
+    return {
+      ok: false,
+      message: "This file type is not supported yet.",
+    };
+  }
+
+  return { ok: true };
 }
 
 function getDirectConversationKey(userA, userB) {
@@ -983,7 +1028,6 @@ function Chat({
     disappearingMessageDuration: null,
   });
   const [disappearingSettingsLoading, setDisappearingSettingsLoading] = useState(false);
-  const [groupE2eeBlockedMembers, setGroupE2eeBlockedMembers] = useState([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState("");
   const [hasPendingNewMessages, setHasPendingNewMessages] = useState(false);
@@ -1005,6 +1049,8 @@ function Chat({
     messagesLoadingByConversationKey,
     setConversationMessages,
     setConversationMessagesLoading,
+    setUnreadCount,
+    updateMessageStatus,
   } = useAppStore();
 
   const selectedChatId = selectedChatData?._id || selectedChatData?.id;
@@ -1043,8 +1089,16 @@ function Chat({
   const typingTimeoutRef = useRef(null);
   const typingActiveRef = useRef(false);
   const lastTypingEmitRef = useRef(0);
+  const lastSendFingerprintRef = useRef({ value: "", timestamp: 0 });
 
   useHandleReceiveMessage(socket);
+
+  useEffect(() => {
+    if (!resolvedConversationKey) return;
+    if (selectedConversationKey !== resolvedConversationKey) {
+      setSelectedConversationKey(resolvedConversationKey);
+    }
+  }, [resolvedConversationKey, selectedConversationKey, setSelectedConversationKey]);
 
   const keepLatestMessageVisible = useCallback(
     (behavior = "auto") => {
@@ -1274,20 +1328,13 @@ function Chat({
         disappearingMessagesEnabled: Boolean(payload.disappearingMessagesEnabled),
         disappearingMessageDuration: payload.disappearingMessageDuration || null,
       });
-      if (
-        payload.disappearingMessagesEnabled &&
-        String(payload.updatedBy || "") === String(userInfo?.id || "")
-      ) {
-        setConversationMessages(resolvedConversationKey, []);
-        setStarredMessages([]);
-      }
     };
 
     socket.on("disappearing_settings_updated", handleDisappearingSettingsUpdated);
     return () => {
       socket.off("disappearing_settings_updated", handleDisappearingSettingsUpdated);
     };
-  }, [resolvedConversationKey, setConversationMessages, socket, userInfo?.id]);
+  }, [resolvedConversationKey, socket]);
 
   const updateDisappearingSettings = async (duration) => {
     if (!selectedChatId || disappearingSettingsLoading) return;
@@ -1311,10 +1358,6 @@ function Chat({
         disappearingMessageDuration:
           response.data?.disappearingMessageDuration || null,
       });
-      if (enabled && resolvedConversationKey) {
-        setConversationMessages(resolvedConversationKey, []);
-        setStarredMessages([]);
-      }
       setShowDisappearingSettings(false);
       toast.success(
         enabled
@@ -1378,19 +1421,6 @@ function Chat({
 
   const isSelectedUserOnline =
     Boolean(activeCallUser) || selectedChatData?.status === "Online";
-  const hasGroupEncryptionWarning =
-    isGroupChat && groupE2eeBlockedMembers.length > 0;
-  const {
-    contactTrustState,
-    loadingContactTrustState,
-    verifyCurrentFingerprint: handleVerifyCurrentFingerprint,
-    clearFingerprintVerification: handleClearFingerprintVerification,
-  } = useTrustStatus({
-    isGroupChat,
-    selectedChatId,
-    currentUserId: userInfo?.id,
-    displayName: selectedChatName || selectedChatEmail || "Contact",
-  });
 
   const groupCallableMembers = useMemo(() => {
     if (!isGroupChat) return [];
@@ -1447,8 +1477,8 @@ function Chat({
   const typingLabel = useMemo(() => {
     const activeTypingUsers = Object.values(typingUsers);
     if (!activeTypingUsers.length) return "";
-    if (!isGroupChat) return "Typing...";
-    const firstName = activeTypingUsers[0]?.name || "Someone";
+    const firstName = String(activeTypingUsers[0]?.name || "Someone").split(/\s+/)[0];
+    if (!isGroupChat) return `${firstName} is typing...`;
     return activeTypingUsers.length === 1
       ? `${firstName} is typing...`
       : `${firstName} and ${activeTypingUsers.length - 1} others are typing...`;
@@ -1565,6 +1595,25 @@ function Chat({
       conversationKey: resolvedConversationKey,
     });
 
+    socket.emit(
+      "mark_messages_seen",
+      {
+        conversationKey: resolvedConversationKey,
+        otherUserId: isGroupChat ? null : selectedChatId,
+      },
+      (ack = {}) => {
+        if (!ack?.ok) return;
+        (ack.updates || []).forEach((update) => {
+          updateMessageStatus(update.messageId, {
+            status: update.status,
+            seenAt: update.seenAt,
+            deliveredAt: update.seenAt,
+          });
+        });
+        setUnreadCount(resolvedConversationKey, 0);
+      }
+    );
+
     apiClient
       .post(
         MARK_MESSAGES_SEEN_ROUTE,
@@ -1582,7 +1631,14 @@ function Chat({
         conversationKey: resolvedConversationKey,
       });
     };
-  }, [isGroupChat, resolvedConversationKey, socket, selectedChatId]);
+  }, [
+    isGroupChat,
+    resolvedConversationKey,
+    selectedChatId,
+    setUnreadCount,
+    socket,
+    updateMessageStatus,
+  ]);
 
   useEffect(() => {
     apiClient
@@ -2041,6 +2097,26 @@ function Chat({
     setConversationMessages(conversationKey, removeMessage(currentMessages, messageLike));
   };
 
+  const retryFailedLocalMessage = (message) => {
+    const conversationKey = message?.conversationKey || resolvedConversationKey;
+    if (!conversationKey) return;
+
+    removeLocalMessage(conversationKey, message);
+
+    const retryText = String(message?.decryptedContent || "").trim();
+    if (message?.localFile) {
+      setAttachedFile({
+        file: message.localFile,
+        type: message.localAttachmentType || message.localFile.type,
+      });
+      setText(retryText);
+    } else {
+      setText(retryText || message?.content || "");
+    }
+
+    composerInputRef.current?.focus({ preventScroll: true });
+  };
+
   const buildEncryptedPayload = async (
     plaintext,
     { payloadType = "text", preserveWhitespace = false, ...overrides } = {}
@@ -2266,17 +2342,23 @@ function Chat({
       return;
     }
 
-    apiClient
-      .post(
+    let callLogId = null;
+    try {
+      const response = await apiClient.post(
         CALLS_LOG_ROUTE,
         { recipientId: targetUserId, type: callType, status: "initiated" },
         { withCredentials: true }
-      )
-      .catch((error) => console.error("Error logging call:", error));
+      );
+      callLogId = response.data?.call?._id || response.data?.call?.id || null;
+    } catch (error) {
+      console.error("Error logging call:", error);
+    }
+
     const { callToOtherUser } = await import("@/utils/webRTC/webRTCHandler");
     callToOtherUser(
       {
         userId: targetUserId,
+        callLogId,
         socketId: activeCallUser?.socketId,
         username: activeCallUser?.username,
         displayName: activeCallUser?.displayName,
@@ -2476,10 +2558,31 @@ function Chat({
     )
       return;
 
+    const sendFingerprint = JSON.stringify({
+      chatId: selectedChatId,
+      group: isGroupChat,
+      text,
+      fileName: attachedFile.file?.name || "",
+      fileSize: attachedFile.file?.size || 0,
+      editingMessageId,
+    });
+    const now = Date.now();
+    if (
+      lastSendFingerprintRef.current.value === sendFingerprint &&
+      now - lastSendFingerprintRef.current.timestamp < 800
+    ) {
+      return;
+    }
+    lastSendFingerprintRef.current = {
+      value: sendFingerprint,
+      timestamp: now,
+    };
+
     let optimisticMessageId = null;
     let clientMessageId = null;
     let requestId = null;
     let retryConversationKey = resolvedConversationKey;
+    let localPreviewUrl = "";
 
     try {
       sendingMessageRef.current = true;
@@ -2501,6 +2604,8 @@ function Chat({
       let uploadedFile = null;
       let preparedAttachmentFile = attachedFile.file;
       const pendingText = text;
+      const pendingAttachmentFile = attachedFile.file;
+      const pendingAttachmentType = attachedFile.type;
       const pendingReplyId = replyingToMessage?._id || replyingToMessage?.id || null;
       const activeConversationKey =
         resolvedConversationKey ||
@@ -2510,7 +2615,7 @@ function Chat({
       retryConversationKey = activeConversationKey;
       const optimisticContent =
         pendingText ||
-        (attachedFile.file
+        (pendingAttachmentFile
           ? messageType === "image"
             ? "Image"
             : messageType === "video"
@@ -2540,21 +2645,35 @@ function Chat({
         group: isGroupChat ? selectedChatData?._id : undefined,
         content: optimisticContent,
         decryptedContent: pendingText || "",
-        messageType: attachedFile.file ? normalizeAttachmentKind(attachedFile.type, attachedFile.file.type) : "text",
+        messageType: pendingAttachmentFile
+          ? normalizeAttachmentKind(pendingAttachmentType, pendingAttachmentFile.type)
+          : "text",
         timestamp: new Date().toISOString(),
         status: "sending",
         replyTo: pendingReplyId,
-        uploadStatus: attachedFile.file ? "preparing" : "sending",
+        uploadStatus: pendingAttachmentFile ? "preparing" : "sending",
+        localFile: pendingAttachmentFile || null,
+        localAttachmentType: pendingAttachmentType || null,
       };
 
       mergeConversationMessageSet(activeConversationKey, optimisticPreviewMessage);
 
-      if (attachedFile.file) {
-        preparedAttachmentFile = await compressImageIfNeeded(attachedFile.file);
-        messageType = normalizeAttachmentKind(attachedFile.type, preparedAttachmentFile.type);
-        const previewUrl = URL.createObjectURL(preparedAttachmentFile);
+      setText("");
+      clearAttachedFile();
+      clearReplyState();
+      setShowAttachmentMenu(false);
+      keepComposerFocusedAfterSend();
+      setIsSendingMessage(false);
+      sendingMessageRef.current = false;
+
+      if (pendingAttachmentFile) {
+        preparedAttachmentFile = await compressImageIfNeeded(pendingAttachmentFile);
+        messageType = normalizeAttachmentKind(pendingAttachmentType, preparedAttachmentFile.type);
+        localPreviewUrl = URL.createObjectURL(preparedAttachmentFile);
         patchLocalMessage(activeConversationKey, { clientMessageId }, {
           messageType,
+          localFile: preparedAttachmentFile,
+          localAttachmentType: pendingAttachmentType || preparedAttachmentFile.type,
           content:
             messageType === "audio" && preparedAttachmentFile?.name?.startsWith("voice-note-")
               ? "Voice note"
@@ -2565,8 +2684,8 @@ function Chat({
                     : messageType === "audio"
                       ? "Audio"
                       : "Document"),
-          fileUrl: previewUrl,
-          localPreviewUrl: previewUrl,
+          fileUrl: localPreviewUrl,
+          localPreviewUrl,
           uploadStatus: "uploading",
           uploadProgress: 0,
         });
@@ -2589,7 +2708,7 @@ function Chat({
         image: "Image",
         video: "Video",
         document: "Document",
-        audio: attachedFile.file?.name?.startsWith("voice-note-")
+        audio: pendingAttachmentFile?.name?.startsWith("voice-note-")
           ? "Voice note"
           : "Audio",
       };
@@ -2604,7 +2723,7 @@ function Chat({
           groupId: isGroupChat ? selectedChatId : undefined,
           content:
             messageType === "text"
-              ? text.trim()
+              ? pendingText.trim()
               : pendingText || contentMap[messageType],
           messageType,
           fileUrl: uploadedFile?.fileUrl,
@@ -2628,7 +2747,7 @@ function Chat({
             toast.error(ack?.error || "Failed to send message.");
             return;
           }
-      if (optimisticMessageId && ack?.message) {
+          if (optimisticMessageId && ack?.message) {
             const resolvedDisplayContent =
               pendingText ||
               (messageType === "image"
@@ -2654,15 +2773,13 @@ function Chat({
               uploadError: null,
               uploadProgress: 100,
             });
+            if (localPreviewUrl) {
+              URL.revokeObjectURL(localPreviewUrl);
+              localPreviewUrl = "";
+            }
           }
         }
       );
-
-      setText("");
-      clearAttachedFile();
-      clearReplyState();
-      setShowAttachmentMenu(false);
-      keepComposerFocusedAfterSend();
     } catch (error) {
       if (typeof optimisticMessageId !== "undefined" && optimisticMessageId) {
         patchLocalMessage(retryConversationKey, { clientMessageId }, {
@@ -3224,7 +3341,29 @@ function Chat({
     }
 
     if (message.uploadStatus === "failed") {
-      return <span className="text-[10px] text-rose-300">Failed</span>;
+      return (
+        <span className="inline-flex items-center gap-2 text-[10px] text-rose-200">
+          <span>Failed</span>
+          <button
+            type="button"
+            className="rounded-full bg-rose-400/15 px-2 py-0.5"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => retryFailedLocalMessage(message)}
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            className="rounded-full bg-white/10 px-2 py-0.5"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
+              removeLocalMessage(message.conversationKey || resolvedConversationKey, message)
+            }
+          >
+            Remove
+          </button>
+        </span>
+      );
     }
 
     if (isGroupChat) {
@@ -3232,14 +3371,29 @@ function Chat({
     }
 
     if (message.status === "seen") {
-      return <Tick color="#67e8f9" read />;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Tick color="#67e8f9" read />
+          <span>Seen</span>
+        </span>
+      );
     }
 
     if (message.status === "delivered") {
-      return <Tick color="#94a3b8" read />;
+      return (
+        <span className="inline-flex items-center gap-1">
+          <Tick color="#94a3b8" read />
+          <span>Delivered</span>
+        </span>
+      );
     }
 
-    return <Tick color="#64748b" read />;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Tick color="#64748b" read />
+        <span>{message.status === "sending" ? "Sending" : "Sent"}</span>
+      </span>
+    );
   };
 
   const jumpToMessageAndCloseModal = (messageId) => {
@@ -3293,12 +3447,7 @@ function Chat({
       </button>
     ) : null;
 
-  const warningBanner =
-    !isGroupChat && contactTrustState?.status === "changed" ? (
-      <div className="border-b border-rose-400/15 bg-rose-400/8 px-4 py-3 text-sm text-rose-100">
-        This contact&apos;s security key has changed. Verify the new fingerprint before you share sensitive information.
-      </div>
-    ) : null;
+  const warningBanner = null;
 
   const decryptingBanner = null;
 
@@ -3338,31 +3487,6 @@ function Chat({
             disappearingLabel={disappearingLabel}
             desktopActions={
               <>
-                {!isGroupChat && (
-                  <button
-                    type="button"
-                    data-testid="chat-verify-key-button"
-                    className={`themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex ${
-                      contactTrustState?.status === "changed"
-                        ? "border border-rose-400/25 text-rose-200"
-                        : contactTrustState?.status === "verified"
-                          ? "text-emerald-200"
-                          : ""
-                    }`}
-                    onClick={
-                      contactTrustState?.status === "verified"
-                        ? handleClearFingerprintVerification
-                        : handleVerifyCurrentFingerprint
-                    }
-                    title="Manage contact security verification"
-                  >
-                    {loadingContactTrustState
-                      ? "Checking..."
-                      : contactTrustState?.status === "verified"
-                        ? "Verified"
-                        : "Verify"}
-                  </button>
-                )}
                 <button
                   type="button"
                   className="themed-panel-soft hidden h-10 items-center justify-center rounded-2xl px-3 text-xs transition hover:text-white md:inline-flex"
@@ -3479,37 +3603,6 @@ function Chat({
                           <Search className="h-4 w-4" />
                           Search in chat
                         </button>
-                        {!isGroupChat && (
-                          <button
-                            type="button"
-                            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5 ${
-                              contactTrustState?.status === "changed"
-                                ? "text-rose-200"
-                                : contactTrustState?.status === "verified"
-                                  ? "text-emerald-200"
-                                  : ""
-                            }`}
-                            onClick={() => {
-                              setShowMobileHeaderMenu(false);
-                              if (contactTrustState?.status === "verified") {
-                                handleClearFingerprintVerification();
-                                return;
-                              }
-                              handleVerifyCurrentFingerprint();
-                            }}
-                          >
-                            {contactTrustState?.status === "verified" ? (
-                              <ShieldCheck className="h-4 w-4" />
-                            ) : contactTrustState?.status === "changed" ? (
-                              <ShieldAlert className="h-4 w-4" />
-                            ) : (
-                              <ShieldQuestion className="h-4 w-4" />
-                            )}
-                            {contactTrustState?.status === "verified"
-                              ? "Verified secure chat"
-                              : "Verify security"}
-                          </button>
-                        )}
                         <button
                           type="button"
                           className="flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-sm transition hover:bg-white/5"
@@ -3624,7 +3717,7 @@ function Chat({
           )}
 
           {attachedFile.file && (
-            <div className="themed-page-card absolute bottom-20 left-1/2 z-20 flex w-[min(680px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col items-center gap-5 rounded-[28px] p-4 shadow-[0_30px_90px_rgba(15,23,42,0.18)] md:w-[min(680px,calc(100vw-5rem))] md:rounded-[32px] md:p-6">
+            <div className="themed-page-card absolute bottom-full left-1/2 z-20 mb-3 flex max-h-[min(46vh,360px)] w-[min(680px,calc(100vw-1.5rem))] -translate-x-1/2 flex-col items-center gap-5 overflow-y-auto rounded-[28px] p-4 shadow-[0_30px_90px_rgba(15,23,42,0.18)] md:w-[min(680px,calc(100vw-5rem))] md:rounded-[32px] md:p-6">
               <button
                 type="button"
                 className="themed-panel-soft absolute left-4 top-4 rounded-full p-2"
@@ -3669,6 +3762,11 @@ function Chat({
             <div className={`absolute z-20 ${isMobile ? "bottom-14 left-12" : "bottom-16 left-14"}`}>
               <AttachmentMenu
                 onAttach={(file, type) => {
+                  const validation = validateAttachmentFile(file);
+                  if (!validation.ok) {
+                    toast.error(validation.message);
+                    return;
+                  }
                   setAttachedFile({ file, type });
                   setShowAttachmentMenu(false);
                 }}
@@ -3787,22 +3885,6 @@ function Chat({
             </div>
           )}
 
-          {hasGroupEncryptionWarning && (
-            <div className={`themed-page-card absolute ${isMobile ? "-top-28 right-0" : "-top-20 right-16"} left-0 rounded-2xl px-4 py-3`}>
-              <p className="themed-title text-sm font-medium">
-                Some members still need encryption setup
-              </p>
-              <p className="themed-subtitle mt-1 text-xs">
-                {groupE2eeBlockedMembers
-                  .slice(0, 3)
-                  .map((member) => member.displayName)
-                  .join(", ")}
-                {groupE2eeBlockedMembers.length > 3 ? " and others" : ""} need to open
-                ConnectNow once to create their encryption keys.
-              </p>
-            </div>
-          )}
-
           <Input
             ref={composerInputRef}
             data-testid="chat-composer-input"
@@ -3912,7 +3994,7 @@ function Chat({
                     Disappearing Messages
                   </p>
                   <p className="themed-subtitle mt-1 text-sm">
-                    Applies only to new messages in this chat.
+                    Applies only to new messages sent after this setting changes.
                   </p>
                 </div>
                 <button

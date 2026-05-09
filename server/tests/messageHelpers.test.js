@@ -7,6 +7,9 @@ const { buildClientMessageLookupQuery } = await import(
 const { buildMessagesPaginationQuery } = await import(
   "../controllers/MessagesController.js"
 );
+const { buildGlobalMessageSearchQuery } = await import(
+  "../controllers/SearchController.js"
+);
 
 test("buildClientMessageLookupQuery creates deterministic lookup fields", () => {
   const query = buildClientMessageLookupQuery({
@@ -71,4 +74,54 @@ test("buildMessagesPaginationQuery omits invalid before cursor", () => {
     ],
   });
   assert.ok(query.$or[2].expiresAt.$gt instanceof Date);
+});
+
+test("global message search keeps non-expired and content filters together", () => {
+  const regex = /hello/i;
+  const query = buildGlobalMessageSearchQuery({
+    userId: "user-1",
+    accessibleConversationKeys: ["user-1:user-2", "group:1"],
+    tab: "messages",
+    regex,
+  });
+
+  assert.deepEqual(query.deletedFor, { $ne: "user-1" });
+  assert.deepEqual(query.conversationKey, {
+    $in: ["user-1:user-2", "group:1"],
+  });
+  assert.equal(query.$and.length, 2);
+  assert.deepEqual(query.$and[0], {
+    $or: [
+      { expiresAt: { $exists: false } },
+      { expiresAt: null },
+      { expiresAt: query.$and[0].$or[2].expiresAt },
+    ],
+  });
+  assert.ok(query.$and[0].$or[2].expiresAt.$gt instanceof Date);
+  assert.deepEqual(query.$and[1], {
+    $or: [
+      { content: regex },
+      { "meta.poll.question": regex },
+      { "meta.poll.options.text": regex },
+      { fileUrl: regex },
+    ],
+  });
+});
+
+test("global file search filters expired attachment messages", () => {
+  const regex = /invoice/i;
+  const query = buildGlobalMessageSearchQuery({
+    userId: "user-2",
+    accessibleConversationKeys: ["group:1"],
+    tab: "files",
+    regex,
+  });
+
+  assert.deepEqual(query.messageType, {
+    $in: ["image", "video", "audio", "document"],
+  });
+  assert.deepEqual(query.$and[1], {
+    $or: [{ fileUrl: regex }, { content: regex }],
+  });
+  assert.ok(query.$and[0].$or[2].expiresAt.$gt instanceof Date);
 });

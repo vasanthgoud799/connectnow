@@ -483,7 +483,7 @@ const DirectCall = (props) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[90] h-[100dvh] w-screen max-w-full overflow-hidden bg-[#040711]/98 backdrop-blur-xl">
+    <div className="fixed inset-0 z-[90] h-[var(--app-viewport-height,100dvh)] w-screen max-w-full overflow-hidden bg-[#040711]/98 backdrop-blur-xl">
       {callRejected.rejected && (
         <CallRejectedDialog
           reason={callRejected.reason}

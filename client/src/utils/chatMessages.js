@@ -134,6 +134,12 @@ export const mergeMessageRecords = (currentMessage, nextMessage) => {
     normalizedCurrent.decryptedContent,
     normalizedCurrent
   );
+  const nextUploadStatus =
+    normalizedNext.uploadStatus ||
+    (["sent", "delivered", "seen"].includes(normalizedNext.status)
+      ? null
+      : normalizedCurrent.uploadStatus) ||
+    null;
 
   return normalizeMessage({
     ...normalizedCurrent,
@@ -141,14 +147,10 @@ export const mergeMessageRecords = (currentMessage, nextMessage) => {
     content: nextContent || currentContent || "",
     decryptedContent: nextDecryptedContent || currentDecryptedContent || "",
     localPreviewUrl:
-      normalizedNext.localPreviewUrl || normalizedCurrent.localPreviewUrl || null,
+      normalizedNext.localPreviewUrl ||
+      (nextUploadStatus ? normalizedCurrent.localPreviewUrl : null),
     resolvedMedia: normalizedNext.resolvedMedia || normalizedCurrent.resolvedMedia || null,
-    uploadStatus:
-      normalizedNext.uploadStatus ||
-      (normalizedNext.status === "sent" || normalizedNext.status === "delivered"
-        ? null
-        : normalizedCurrent.uploadStatus) ||
-      null,
+    uploadStatus: nextUploadStatus,
     uploadError: normalizedNext.uploadError || null,
   });
 };

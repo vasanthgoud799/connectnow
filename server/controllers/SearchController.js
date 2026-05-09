@@ -2,7 +2,52 @@ import Group from "../models/GroupModel.js";
 import Chat from "../models/ChatModel.js";
 import Message from "../models/MessagesModel.js";
 import User from "../models/UserModel.js";
-import { hydrateMessagesMediaForUser } from "../services/MessageService.js";
+import {
+  buildNonExpiredMessageQuery,
+  hydrateMessagesMediaForUser,
+} from "../services/MessageService.js";
+
+export const buildGlobalMessageSearchQuery = ({
+  userId,
+  accessibleConversationKeys = [],
+  tab = "all",
+  regex,
+  isDateSearch = false,
+  dateValue = null,
+}) => {
+  const messageQuery = {
+    deletedFor: { $ne: userId },
+    conversationKey: { $in: accessibleConversationKeys },
+  };
+  const contentFilters =
+    tab === "files"
+      ? [{ fileUrl: regex }, { content: regex }]
+      : [
+          { content: regex },
+          { "meta.poll.question": regex },
+          { "meta.poll.options.text": regex },
+          { fileUrl: regex },
+        ];
+
+  if (tab === "files") {
+    messageQuery.messageType = { $in: ["image", "video", "audio", "document"] };
+  }
+
+  messageQuery.$and = [
+    buildNonExpiredMessageQuery(),
+    { $or: contentFilters },
+  ];
+
+  if (isDateSearch) {
+    const start = new Date(dateValue);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(dateValue);
+    end.setHours(23, 59, 59, 999);
+    messageQuery.createdAt = { $gte: start, $lte: end };
+  }
+
+  return messageQuery;
+};
 
 export const globalSearch = async (req, res) => {
   try {
@@ -58,30 +103,14 @@ export const globalSearch = async (req, res) => {
     }
 
     if (tab === "all" || tab === "messages" || tab === "files") {
-      const messageQuery = {
-        deletedFor: { $ne: req.userId },
-        conversationKey: { $in: accessibleConversationKeys },
-      };
-
-      if (tab === "files") {
-        messageQuery.messageType = { $in: ["image", "video", "audio", "document"] };
-        messageQuery.$or = [{ fileUrl: regex }, { content: regex }];
-      } else {
-        messageQuery.$or = [
-          { content: regex },
-          { "meta.poll.question": regex },
-          { "meta.poll.options.text": regex },
-          { fileUrl: regex },
-        ];
-      }
-
-      if (isDateSearch) {
-        const start = new Date(dateValue);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(dateValue);
-        end.setHours(23, 59, 59, 999);
-        messageQuery.createdAt = { $gte: start, $lte: end };
-      }
+      const messageQuery = buildGlobalMessageSearchQuery({
+        userId: req.userId,
+        accessibleConversationKeys,
+        tab,
+        regex,
+        isDateSearch,
+        dateValue,
+      });
 
       const messageResults = await Message.find(messageQuery)
         .populate("sender", "firstName lastName email image")

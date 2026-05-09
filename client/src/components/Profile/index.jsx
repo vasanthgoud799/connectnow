@@ -1,5 +1,5 @@
 import { useAppStore } from "@/store";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import { IoArrowBack } from "react-icons/io5";
@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Camera, Copy, ShieldCheck, UserRound } from "lucide-react";
 import { ensureUserE2EEIdentity, getLocalIdentitySummary } from "@/crypto/e2eeService";
+import { useVisualViewportHeight } from "@/hooks/useVisualViewportHeight";
 
 async function compressProfileImageIfNeeded(file) {
   if (!file || !String(file.type || "").startsWith("image/")) {
@@ -72,6 +73,7 @@ async function compressProfileImageIfNeeded(file) {
 }
 
 function Profile() {
+  useVisualViewportHeight();
   const { userInfo, setUserInfo } = useAppStore();
   const { getToken } = useAuth();
   const { user: clerkUser } = useUser();
@@ -91,6 +93,8 @@ function Profile() {
   );
   const passwordEnabled = Boolean(clerkUser?.passwordEnabled);
   const [identitySummary, setIdentitySummary] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const imagePreviewUrlRef = useRef("");
   const normalizedFirstName = firstName.trim();
   const normalizedLastName = lastName.trim();
   const normalizedAbout = about.trim();
@@ -113,6 +117,15 @@ function Profile() {
     );
     setImageFile(null);
   }, [clerkUser?.firstName, clerkUser?.lastName, userInfo]);
+
+  useEffect(
+    () => () => {
+      if (imagePreviewUrlRef.current) {
+        URL.revokeObjectURL(imagePreviewUrlRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     let ignore = false;
@@ -165,12 +178,13 @@ function Profile() {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImage(reader.result);
-        setImageFile(file);
-      };
-      reader.readAsDataURL(file);
+      if (imagePreviewUrlRef.current) {
+        URL.revokeObjectURL(imagePreviewUrlRef.current);
+      }
+      const objectUrl = URL.createObjectURL(file);
+      imagePreviewUrlRef.current = objectUrl;
+      setImage(objectUrl);
+      setImageFile(file);
     }
   };
 
@@ -230,6 +244,7 @@ function Profile() {
   const saveChanges = async () => {
     if (validateProfile()) {
       try {
+        setIsSaving(true);
         let imageUpload = null;
         if (imageFile) {
           try {
@@ -298,6 +313,8 @@ function Profile() {
               ? "Profile photo upload failed. Try a smaller image and save again."
               : "Failed to update profile")
         );
+      } finally {
+        setIsSaving(false);
       }
     }
   };
@@ -314,7 +331,7 @@ function Profile() {
   };
 
   return (
-    <div className="themed-shell flex min-h-[100dvh] items-start justify-center overflow-y-auto px-4 py-6 md:items-center md:py-8">
+    <div className="themed-shell flex min-h-[var(--app-viewport-height,100dvh)] items-start justify-center overflow-y-auto px-4 py-6 md:items-center md:py-8">
       <div className="themed-panel w-full max-w-6xl rounded-[36px] shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
         <div className="grid lg:grid-cols-[0.9fr_1.1fr] ">
           <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r lg:p-10 ">
@@ -526,9 +543,10 @@ function Profile() {
 
               <Button
                 onClick={saveChanges}
+                disabled={isSaving}
                 className="mt-8 h-14 w-full rounded-2xl bg-gradient-to-r from-[#f97316] via-[#fb7185] to-[#38bdf8] text-base font-semibold text-white shadow-[0_20px_60px_rgba(249,115,22,0.24)]"
               >
-                Save changes
+                {isSaving ? "Saving..." : "Save changes"}
               </Button>
             </div>
           </div>

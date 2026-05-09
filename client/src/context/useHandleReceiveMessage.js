@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAppStore } from "@/store";
 import {
   areSameMessage,
@@ -56,6 +56,7 @@ const getNotificationPayloadForMessage = (message, currentUserId) => {
 };
 
 const useHandleReceiveMessage = (socket) => {
+  const processedReceiveEventsRef = useRef(new Set());
   const {
     addMessages,
     updateMessageStatus,
@@ -76,6 +77,25 @@ const useHandleReceiveMessage = (socket) => {
 
     const handleReceiveMessage = (message) => {
       const normalizedIncomingMessage = normalizeMessage(message);
+      if (!normalizedIncomingMessage) return;
+
+      const receiveEventKey =
+        normalizedIncomingMessage._id ||
+        normalizedIncomingMessage.id ||
+        normalizedIncomingMessage.clientMessageId ||
+        `${normalizedIncomingMessage.conversationKey}:${normalizedIncomingMessage.timestamp}`;
+
+      if (receiveEventKey && processedReceiveEventsRef.current.has(receiveEventKey)) {
+        return;
+      }
+
+      if (receiveEventKey) {
+        processedReceiveEventsRef.current.add(receiveEventKey);
+        window.setTimeout(() => {
+          processedReceiveEventsRef.current.delete(receiveEventKey);
+        }, 1500);
+      }
+
       socket.emit("message_received_ack", {
         messageId: normalizedIncomingMessage?._id || normalizedIncomingMessage?.id,
         conversationKey: normalizedIncomingMessage?.conversationKey,
@@ -97,6 +117,10 @@ const useHandleReceiveMessage = (socket) => {
         addMessages(normalizedIncomingMessage);
       }
 
+      const isIncomingFromOtherUser = senderIdIsOtherUser(
+        normalizedIncomingMessage,
+        currentState.userInfo?.id
+      );
       const isCurrentConversationVisible =
         document.visibilityState === "visible" &&
         currentState.activeHomeSection === "chats" &&
@@ -105,9 +129,31 @@ const useHandleReceiveMessage = (socket) => {
           currentState.mobileChatView === "chat");
 
       if (
+        isCurrentConversationVisible &&
+        isIncomingFromOtherUser &&
+        normalizedIncomingMessage?.conversationKey
+      ) {
+        socket.emit(
+          "mark_messages_seen",
+          { conversationKey: normalizedIncomingMessage.conversationKey },
+          (ack = {}) => {
+            if (!ack?.ok) return;
+            (ack.updates || []).forEach((update) => {
+              updateMessageStatus(update.messageId, {
+                status: update.status,
+                seenAt: update.seenAt,
+                deliveredAt: update.seenAt,
+              });
+            });
+            setUnreadCount(normalizedIncomingMessage.conversationKey, 0);
+          }
+        );
+      }
+
+      if (
         currentState.browserNotificationsEnabled &&
         !isCurrentConversationVisible &&
-        senderIdIsOtherUser(normalizedIncomingMessage, currentState.userInfo?.id)
+        isIncomingFromOtherUser
       ) {
         const title =
           normalizedIncomingMessage?.chatType === "group"
@@ -203,6 +249,7 @@ const useHandleReceiveMessage = (socket) => {
     };
 
     socket.on("receive_message", handleReceiveMessage);
+    socket.on("receiveMessage", handleReceiveMessage);
     socket.on("message_delivered", handleDelivered);
     socket.on("message_seen", handleSeen);
     socket.on("poll_updated", handlePollUpdated);
@@ -217,6 +264,7 @@ const useHandleReceiveMessage = (socket) => {
 
     return () => {
       socket.off("receive_message", handleReceiveMessage);
+      socket.off("receiveMessage", handleReceiveMessage);
       socket.off("message_delivered", handleDelivered);
       socket.off("message_seen", handleSeen);
       socket.off("poll_updated", handlePollUpdated);

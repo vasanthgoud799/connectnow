@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 const readViewport = () => ({
-  width: window.innerWidth,
-  height: window.innerHeight,
+  width: window.visualViewport?.width || window.innerWidth,
+  height: window.visualViewport?.height || window.innerHeight,
 });
 
 export const useResponsiveCallLayout = () => {
@@ -15,10 +15,14 @@ export const useResponsiveCallLayout = () => {
 
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleResize);
+    window.visualViewport?.addEventListener("resize", handleResize);
+    window.visualViewport?.addEventListener("scroll", handleResize);
 
     return () => {
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleResize);
+      window.visualViewport?.removeEventListener("resize", handleResize);
+      window.visualViewport?.removeEventListener("scroll", handleResize);
     };
   }, []);
 

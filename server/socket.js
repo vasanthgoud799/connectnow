@@ -1353,7 +1353,7 @@ const setupSocket = async (server) => {
         });
     });
 
-    socket.on("pre-offer", async ({ callee, caller, callType }) => {
+    socket.on("pre-offer", async ({ callee, caller, callType, callLogId }) => {
       const callerId = String(socket.data.userId);
       const targetUserId = callee?.userId;
       const targetSocketId = callee?.socketId;
@@ -1404,6 +1404,7 @@ const setupSocket = async (server) => {
           callerSocketId: socket.id,
           callType: callType || "video",
           sessionId,
+          callLogId: callLogId || callee?.callLogId || caller?.callLogId || null,
         });
         return;
       }
@@ -1416,6 +1417,7 @@ const setupSocket = async (server) => {
           callerSocketId: socket.id,
           callType: callType || "video",
           sessionId,
+          callLogId: callLogId || callee?.callLogId || caller?.callLogId || null,
         });
       }
     });
