@@ -91,9 +91,21 @@ app.use(attachRequestContext);
 app.use(trackRequestLatency);
 
 /* ==================================================
-   FIX: AUTH ROUTES BEFORE RATE LIMITER
+   AUTH ROUTES BEFORE RATE LIMITER
 ================================================== */
-app.use("/api/auth", authRoutes);
+app.use(
+  "/api/auth",
+  cookieParser(),
+  express.json({
+    limit: process.env.JSON_BODY_LIMIT || "2mb",
+  }),
+  express.urlencoded({
+    extended: false,
+    limit: process.env.FORM_BODY_LIMIT || "1mb",
+  }),
+  rejectNoSqlInjection,
+  authRoutes
+);
 
 /* Apply limiter AFTER auth */
 app.use(globalRateLimiter);

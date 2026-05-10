@@ -1911,17 +1911,33 @@ function Chat({
     );
     if (!targetExists) return;
 
-    const timeoutId = setTimeout(() => {
-      const didScroll = messageListRef.current?.scrollToMessageId(focusedMessageId);
+    let frameId = 0;
+    let attempts = 0;
+    const maxAttempts = 12;
 
+    const attemptScroll = () => {
+      const didScroll = messageListRef.current?.scrollToMessageId(focusedMessageId);
       if (didScroll) {
         setTimeout(() => {
           setFocusedMessageId(undefined);
         }, 1800);
+        return;
       }
-    }, 60);
 
-    return () => clearTimeout(timeoutId);
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        frameId = window.requestAnimationFrame(attemptScroll);
+      }
+    };
+
+    const timeoutId = setTimeout(attemptScroll, 80);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
   }, [focusedMessageId, selectedChatMessages, setFocusedMessageId]);
 
   useEffect(() => {
@@ -2928,7 +2944,7 @@ function Chat({
           data-message-id={String(message._id || message.id)}
           className={`flex ${isMobile ? "max-w-[86%]" : "max-w-[72%]"} min-w-0 max-w-full items-end gap-3 ${
             isSender ? "flex-row-reverse" : ""
-          } ${focusedMessageId === String(message._id || message.id) ? "rounded-[28px] ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-transparent" : ""}`}
+          } ${focusedMessageId === String(message._id || message.id) ? "message-search-focused rounded-[28px] ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-transparent" : ""}`}
         >
           {!isSender && (
             <div className="themed-received-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">

@@ -420,7 +420,7 @@ export const updateProfile = async (req, res) => {
     }
 
     const existingUser = await User.findById(userId).select(
-      "firstName lastName image about birthday imageStorageProvider imageStoragePath imageStorageBucket"
+      "email firstName lastName image about birthday imageStorageProvider imageStoragePath imageStorageBucket"
     );
 
     if (!existingUser) {
@@ -437,7 +437,7 @@ export const updateProfile = async (req, res) => {
     const nextFirstName = safeFirstName || inferredFirstName;
     const nextLastName = safeLastName || existingUser.lastName || "";
     const nextImage = imageUpload?.storagePath
-      ? buildStableUserAvatarUrl({ req, userId })
+      ? `${buildStableUserAvatarUrl({ req, userId })}?v=${Date.now()}`
       : image || existingUser.image || "";
     const nextAbout = hasField("about") ? safeAbout : existingUser.about || "";
     const nextBirthday = hasField("birthday")

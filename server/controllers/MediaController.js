@@ -23,6 +23,37 @@ const buildAbsoluteLocalUrl = (req, pathOrUrl) => {
   return `${req.protocol}://${req.get("host")}/${normalizedPath}`;
 };
 
+const getImageContentType = (filePath = "") => {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".webp") return "image/webp";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".svg") return "image/svg+xml";
+  return "image/jpeg";
+};
+
+const streamLocalEntityImage = ({ req, res, storagePath, image }) => {
+  const candidatePath = storagePath || image;
+  if (!candidatePath || /^https?:\/\//i.test(String(candidatePath))) {
+    return false;
+  }
+
+  const normalizedPath = decodeURIComponent(String(candidatePath).replace(/^\/+/, ""));
+  const uploadsRoot = path.resolve(process.cwd(), "uploads", "files");
+  const absolutePath = path.resolve(process.cwd(), normalizedPath);
+  const isInsideUploads =
+    absolutePath === uploadsRoot || absolutePath.startsWith(`${uploadsRoot}${path.sep}`);
+
+  if (!isInsideUploads || !existsSync(absolutePath)) {
+    return false;
+  }
+
+  res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  res.setHeader("Content-Type", getImageContentType(absolutePath));
+  createReadStream(absolutePath).pipe(res);
+  return true;
+};
+
 const redirectToEntityImage = async ({
   req,
   res,
@@ -66,8 +97,17 @@ const redirectToEntityImage = async ({
     }
   }
 
-  const fallbackUrl = buildAbsoluteLocalUrl(req, storagePath || image);
+  if (streamLocalEntityImage({ req, res, storagePath, image })) {
+    return undefined;
+  }
+
+  const fallbackUrl = buildAbsoluteLocalUrl(req, image);
   if (!fallbackUrl) {
+    return res.status(404).json({ message: "Media not found." });
+  }
+
+  const currentUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+  if (fallbackUrl === currentUrl) {
     return res.status(404).json({ message: "Media not found." });
   }
 

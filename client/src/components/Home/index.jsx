@@ -37,6 +37,7 @@ import { registerNewUser } from "@/utils/wssConnection/wssConnection";
 import { useSocket } from "@/context/SocketContext";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVisualViewportHeight } from "@/hooks/useVisualViewportHeight";
+import { useAppShellLock } from "@/hooks/useAppShellLock";
 import RouteLoader from "@/components/ui/RouteLoader";
 import {
   getFocusCallFromNotificationEventName,
@@ -76,6 +77,7 @@ function Home({ activeUsers = [], callState }) {
   const socket = useSocket();
   const { isMobile } = useResponsiveLayout();
   useVisualViewportHeight();
+  useAppShellLock();
 
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -89,14 +91,6 @@ function Home({ activeUsers = [], callState }) {
   );
   const [forceOpenMobileChat, setForceOpenMobileChat] = useState(false);
   const previousSectionRef = useRef(activeSection);
-
-  useEffect(() => {
-    document.body.classList.add("app-shell-body");
-
-    return () => {
-      document.body.classList.remove("app-shell-body");
-    };
-  }, []);
 
   useEffect(() => {
     if (!isMobile) {
@@ -719,7 +713,10 @@ function Home({ activeUsers = [], callState }) {
   };
 
   return (
-    <div className="themed-shell mobile-app-shell relative w-full overflow-hidden">
+    <div
+      className="themed-shell mobile-app-shell relative w-full overflow-hidden"
+      data-app-shell-lock-root
+    >
       {isLoggingOut && (
         <div className="absolute inset-0 z-[140] flex items-center justify-center bg-[#07111f]/95 px-6 text-white">
           <div className="glass-panel rounded-[28px] px-8 py-6 text-center">

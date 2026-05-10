@@ -105,9 +105,15 @@ function Search({ onClose }) {
     );
   };
 
-  const jumpToMessage = (message) => {
+  const jumpToMessage = (message, { closeResults = false } = {}) => {
     const targetId = String(message._id || message.id);
-    setFocusedMessageId(targetId);
+    setFocusedMessageId(undefined);
+    window.requestAnimationFrame(() => {
+      setFocusedMessageId(targetId);
+      if (closeResults) {
+        onClose?.();
+      }
+    });
   };
 
   const jumpToResultIndex = (nextIndex) => {
@@ -199,7 +205,7 @@ function Search({ onClose }) {
                 }`}
                 onClick={() => {
                   setActiveResultIndex(index);
-                  jumpToMessage(message);
+                  jumpToMessage(message, { closeResults: true });
                 }}
               >
                 <div className="flex min-w-0 items-start justify-between gap-3">

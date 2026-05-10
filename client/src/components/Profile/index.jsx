@@ -16,6 +16,22 @@ import ThemeToggle from "@/components/ThemeToggle";
 import { Camera, Copy, ShieldCheck, UserRound } from "lucide-react";
 import { ensureUserE2EEIdentity, getLocalIdentitySummary } from "@/crypto/e2eeService";
 import { useVisualViewportHeight } from "@/hooks/useVisualViewportHeight";
+import { useAppShellLock } from "@/hooks/useAppShellLock";
+
+const resolveUserImage = (user) =>
+  user?.image || user?.avatarUrl || user?.avatar || user?.profileImage || "";
+
+const normalizeUserProfilePayload = (user) => {
+  if (!user) return user;
+  const resolvedImage = resolveUserImage(user);
+  return {
+    ...user,
+    image: resolvedImage,
+    avatar: user.avatar || resolvedImage,
+    avatarUrl: user.avatarUrl || resolvedImage,
+    profileImage: user.profileImage || resolvedImage,
+  };
+};
 
 async function compressProfileImageIfNeeded(file) {
   if (!file || !String(file.type || "").startsWith("image/")) {
@@ -74,6 +90,7 @@ async function compressProfileImageIfNeeded(file) {
 
 function Profile() {
   useVisualViewportHeight();
+  useAppShellLock();
   const { userInfo, setUserInfo } = useAppStore();
   const { getToken } = useAuth();
   const { user: clerkUser } = useUser();
@@ -81,7 +98,7 @@ function Profile() {
   const [firstName, setFirstName] = useState(userInfo?.firstName || "");
   const [lastName, setLastName] = useState(userInfo?.lastName || "");
   const [about, setAbout] = useState(userInfo?.about || "");
-  const [image, setImage] = useState(userInfo?.image || "");
+  const [image, setImage] = useState(resolveUserImage(userInfo));
   const [imageFile, setImageFile] = useState(null);
   const [birthday, setBirthday] = useState(
     userInfo?.birthday ? new Date(userInfo.birthday).toISOString().slice(0, 10) : ""
@@ -111,7 +128,7 @@ function Profile() {
     setFirstName(userInfo?.firstName || clerkUser?.firstName || "");
     setLastName(userInfo?.lastName || clerkUser?.lastName || "");
     setAbout(userInfo?.about || "");
-    setImage(userInfo?.image || "");
+    setImage(resolveUserImage(userInfo));
     setBirthday(
       userInfo?.birthday ? new Date(userInfo.birthday).toISOString().slice(0, 10) : ""
     );
@@ -260,9 +277,9 @@ function Profile() {
         }
         const persistedImage = imageFile
           ? ""
-          : String(image || "").startsWith("data:")
+          : /^(data|blob):/i.test(String(image || ""))
             ? ""
-            : image;
+            : image || resolveUserImage(userInfo);
         let response;
         try {
           response = await apiClient.post(
@@ -298,7 +315,14 @@ function Profile() {
         }
 
         if (response.status === 200 && response.data) {
-          setUserInfo({ ...response.data });
+          const updatedUser = normalizeUserProfilePayload(response.data);
+          setUserInfo(updatedUser);
+          setImage(resolveUserImage(updatedUser));
+          setImageFile(null);
+          if (imagePreviewUrlRef.current) {
+            URL.revokeObjectURL(imagePreviewUrlRef.current);
+            imagePreviewUrlRef.current = "";
+          }
           toast.success("Profile updated successfully");
           navigate("/home");
         }
@@ -331,7 +355,10 @@ function Profile() {
   };
 
   return (
-    <div className="themed-shell flex min-h-[var(--app-viewport-height,100dvh)] items-start justify-center overflow-y-auto px-4 py-6 md:items-center md:py-8">
+    <div
+      className="themed-shell flex h-[var(--app-viewport-height,100dvh)] max-h-[var(--app-viewport-height,100dvh)] min-h-0 items-start justify-center overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 md:items-center md:py-8"
+      data-app-shell-lock-root
+    >
       <div className="themed-panel w-full max-w-6xl rounded-[36px] shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
         <div className="grid lg:grid-cols-[0.9fr_1.1fr] ">
           <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r lg:p-10 ">
