@@ -55,7 +55,7 @@ const VideoCallView = ({
           muted={false}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_35%),linear-gradient(180deg,#050913_0%,#0b1220_100%)] px-6 text-white">
+        <div className="flex h-full w-full items-center justify-center overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_35%),linear-gradient(180deg,#050913_0%,#0b1220_100%)] px-6 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(6rem+env(safe-area-inset-top))] text-white">
           <div className="max-w-md text-center">
             <div className="mx-auto mb-6 flex h-28 w-28 items-center justify-center rounded-full bg-white/8 ring-1 ring-white/10 sm:h-36 sm:w-36">
               <img

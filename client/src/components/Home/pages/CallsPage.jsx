@@ -21,6 +21,7 @@ import {
 } from "@/utils/constants";
 import { useAppStore } from "@/store";
 import { isDirectCallBusy } from "@/store/actions/callActions";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 
 function formatCallDate(value) {
   if (!value) return "";
@@ -86,6 +87,7 @@ function CallContactPicker({
   onCall,
 }) {
   const [searchText, setSearchText] = useState("");
+  useMobileFocusGuard(isOpen);
 
   useEffect(() => {
     if (!isOpen) {
@@ -106,9 +108,9 @@ function CallContactPicker({
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[var(--app-viewport-height,82vh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
+      <div className="themed-modal-surface flex h-[var(--app-viewport-height,100dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <p className="themed-title text-xl font-semibold">Start a call</p>
             <p className="themed-subtitle mt-1 text-sm">
@@ -124,7 +126,7 @@ function CallContactPicker({
           </button>
         </div>
 
-        <div className="relative mb-4">
+        <div className="relative mb-4 shrink-0">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
@@ -135,7 +137,7 @@ function CallContactPicker({
           />
         </div>
 
-        <div className="scrollbar-hide min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+        <div className="mobile-safe-scroll scrollbar-hide flex-1 space-y-3 pr-1">
           {filteredContacts.length === 0 ? (
             <div className="themed-panel-soft rounded-[24px] px-4 py-8 text-center">
               <p className="themed-title text-sm font-medium">No contacts found</p>
@@ -198,6 +200,7 @@ function CallContactPicker({
 function CallsPage({ activeUsers = [], callState }) {
   const [searchText, setSearchText] = useState("");
   const [showCallPicker, setShowCallPicker] = useState(false);
+  useMobileFocusGuard();
   const {
     userInfo,
     calls,

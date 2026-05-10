@@ -64,6 +64,7 @@ import {
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants.js";
 import { isDirectCallBusy } from "@/store/actions/callActions";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 import {
   areSameMessage,
   mergeMessages,
@@ -712,6 +713,7 @@ function GroupCallPickerModal({
   onStartCall,
 }) {
   const [selectedMemberIds, setSelectedMemberIds] = useState([]);
+  useMobileFocusGuard(isOpen);
 
   useEffect(() => {
     if (!isOpen) {
@@ -778,9 +780,9 @@ function GroupCallPickerModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-      <div className="themed-modal-surface w-full max-w-2xl rounded-[30px] p-6 shadow-[0_30px_80px_rgba(2,8,23,0.25)]">
-        <div className="mb-4 flex items-center justify-between">
+    <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
+      <div className="themed-modal-surface flex h-[var(--app-viewport-height,100dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,720px)] md:rounded-[30px] md:p-6">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <p className="themed-title text-xl font-semibold">{title}</p>
             <p className="themed-subtitle text-sm">
@@ -796,7 +798,7 @@ function GroupCallPickerModal({
           </button>
         </div>
 
-        <div className="space-y-5">
+        <div className="mobile-safe-scroll flex-1 space-y-5 pr-1">
           <div>
             <div className="mb-2 flex items-center justify-between">
               <p className="themed-title text-sm font-medium">Available now</p>
@@ -824,7 +826,7 @@ function GroupCallPickerModal({
             </div>
           ) : null}
 
-          <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="themed-subtitle text-sm">
               Members will get a realtime invitation and can join from their current screen.
             </p>

@@ -124,7 +124,7 @@ const CallControls = ({
   }
 
   return (
-    <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-3 rounded-[28px] border border-white/10 bg-[#050a14]/78 px-4 py-3 shadow-[0_28px_70px_rgba(2,8,23,0.4)] backdrop-blur-2xl sm:px-5">
+    <div className="pointer-events-auto flex max-h-[calc(var(--app-viewport-height,100dvh)-2rem)] max-w-[calc(var(--app-viewport-width,100vw)-2rem)] flex-wrap items-center justify-center gap-3 overflow-y-auto rounded-[28px] border border-white/10 bg-[#050a14]/78 px-4 py-3 shadow-[0_28px_70px_rgba(2,8,23,0.4)] backdrop-blur-2xl sm:px-5">
       {controls.map((control) => (
         <ControlButton key={control.label} {...control} />
       ))}

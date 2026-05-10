@@ -589,6 +589,26 @@
   animation: connectnow-message-search-focus 1800ms ease-out;
 }
 
+.mobile-viewport-overlay {
+  position: fixed;
+  top: var(--app-viewport-offset-top, 0px);
+  left: var(--app-viewport-offset-left, 0px);
+  width: var(--app-viewport-width, 100vw);
+  max-width: var(--app-viewport-width, 100vw);
+  height: var(--app-viewport-height, 100dvh);
+  max-height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mobile-safe-scroll {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 @keyframes connectnow-message-search-focus {
   0% {
     box-shadow:

@@ -6,6 +6,7 @@ import { SEARCH_CONTACTS_ROUTES, SEND_FRIEND_REQUEST_ROUTE } from "@/utils/const
 import { useAppStore } from "@/store";
 import { Search, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 
 function AddUser({ onFriendAdded, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -13,6 +14,7 @@ function AddUser({ onFriendAdded, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const { userInfo, setUserInfo } = useAppStore();
+  useMobileFocusGuard();
 
   const searchContacts = async () => {
     if (!searchTerm.trim()) {
@@ -83,9 +85,9 @@ function AddUser({ onFriendAdded, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface themed-chat-canvas flex h-[var(--app-viewport-height,88vh)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,760px)] md:rounded-[32px]">
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-[max(1.1rem,env(safe-area-inset-top))] md:px-6">
+    <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/60 p-0 backdrop-blur-sm md:items-center md:p-4">
+      <div className="themed-modal-surface themed-chat-canvas flex h-[var(--app-viewport-height,100dvh)] w-full max-w-3xl flex-col overflow-hidden rounded-t-[32px] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,760px)] md:rounded-[32px]">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
           <div>
             <p className="themed-accent-text text-xs uppercase tracking-[0.28em]">
               New contact
@@ -103,7 +105,7 @@ function AddUser({ onFriendAdded, onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:p-6">
+        <div className="mobile-safe-scroll flex flex-1 flex-col p-5 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6 md:pb-6">
           <div className="flex flex-col gap-3 md:flex-row">
             <div className="relative flex-1">
               <Search className="themed-subtitle pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" />
@@ -129,7 +131,7 @@ function AddUser({ onFriendAdded, onClose }) {
             </Button>
           </div>
 
-          <div className="mt-6 min-h-[280px] max-h-[420px] space-y-3 overflow-y-auto pr-2">
+          <div className="mt-6 min-h-0 flex-1 space-y-3 overflow-y-auto pr-2">
             {searchedContacts.length > 0 ? (
               searchedContacts.map((contact) => (
                 <div

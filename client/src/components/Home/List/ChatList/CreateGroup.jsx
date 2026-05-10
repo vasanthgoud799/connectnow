@@ -10,6 +10,7 @@ import {
   UPLOAD_FILE_ROUTE,
 } from "@/utils/constants";
 import { toast } from "sonner";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 
 function CreateGroup({ onClose, onCreated }) {
   const [name, setName] = useState("");
@@ -20,6 +21,7 @@ function CreateGroup({ onClose, onCreated }) {
   const [search, setSearch] = useState("");
   const [avatar, setAvatar] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
+  useMobileFocusGuard();
 
   useEffect(() => {
     const loadContacts = async () => {
@@ -122,11 +124,11 @@ function CreateGroup({ onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface themed-chat-canvas animate-in fade-in zoom-in-95 duration-200 flex h-[var(--app-viewport-height,92dvh)] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
+    <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
+      <div className="themed-modal-surface themed-chat-canvas animate-in fade-in zoom-in-95 duration-200 flex h-[var(--app-viewport-height,100dvh)] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-[max(1.1rem,env(safe-area-inset-top))] md:px-6">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
           <div>
             <p className="themed-accent-text text-xs uppercase tracking-[0.28em]">
               New group
@@ -143,10 +145,10 @@ function CreateGroup({ onClose, onCreated }) {
           </button>
         </div>
 
-        <div className="grid flex-1 gap-5 overflow-hidden p-4 md:p-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        <div className="mobile-safe-scroll grid flex-1 gap-5 p-4 md:p-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden">
           
           {/* LEFT */}
-          <div className="min-h-0 space-y-4 overflow-y-auto pr-1 md:pr-2">
+          <div className="min-h-0 space-y-4 pr-1 md:pr-2 lg:overflow-y-auto">
             
             {/* Avatar Upload */}
             <div className="themed-page-card flex items-center gap-4 rounded-[24px] p-4">
@@ -236,7 +238,7 @@ function CreateGroup({ onClose, onCreated }) {
           </div>
 
           {/* RIGHT */}
-          <div className="flex min-h-0 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
             <div className="mb-3 flex items-start justify-between gap-4">
               <div>
                 <p className="themed-title text-base font-semibold">
@@ -259,7 +261,7 @@ function CreateGroup({ onClose, onCreated }) {
               className="themed-input mb-3 h-12 rounded-2xl"
             />
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 md:pr-2 scroll-smooth">
+            <div className="max-h-[50vh] min-h-0 space-y-3 overflow-y-auto pr-1 scroll-smooth md:pr-2 lg:flex-1">
               {filteredContacts.length === 0 && (
                 <p className="themed-subtitle mt-10 text-center">
                   No contacts found
@@ -314,7 +316,7 @@ function CreateGroup({ onClose, onCreated }) {
           </div>
         </div>
 
-        <div className="border-t border-white/10 px-4 py-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] md:px-6 md:pb-4">
+        <div className="shrink-0 border-t border-white/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6 md:pb-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Button
               type="button"

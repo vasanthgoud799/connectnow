@@ -41,6 +41,7 @@ import {
 } from "@/crypto/e2eeService";
 import { useTrustStatus } from "../Chat/hooks/useTrustStatus";
 import MobileSafeHeader from "@/components/ui/MobileSafeHeader";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 
 function getAttachmentKind(message) {
   const type = String(message?.messageType || "").toLowerCase();
@@ -145,6 +146,7 @@ function Detail({ onClose, activeUsers = [], callState }) {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [previewMedia, setPreviewMedia] = useState(null);
   const [resolvedAttachmentMap, setResolvedAttachmentMap] = useState({});
+  useMobileFocusGuard();
 
   const isGroupChat = Boolean(selectedChatData?.isGroup);
 

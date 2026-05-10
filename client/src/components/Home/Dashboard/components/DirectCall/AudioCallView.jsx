@@ -10,7 +10,7 @@ const AudioCallView = ({
   isConnected,
   localMicrophoneEnabled,
 }) => (
-  <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden px-5 py-8 text-white sm:px-8">
+  <div className="relative flex h-full min-h-0 w-full items-center justify-center overflow-x-hidden overflow-y-auto px-5 pb-[calc(8rem+env(safe-area-inset-bottom))] pt-[calc(6rem+env(safe-area-inset-top))] text-white sm:px-8">
     <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_35%),radial-gradient(circle_at_bottom,_rgba(244,114,182,0.14),_transparent_35%),linear-gradient(180deg,#060a13_0%,#0b1220_100%)]" />
     <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:36px_36px]" />
 

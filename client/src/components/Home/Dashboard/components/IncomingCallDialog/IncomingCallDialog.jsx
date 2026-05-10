@@ -32,11 +32,11 @@ const IncomingCallDialog = ({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_32%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
+    <div className="mobile-viewport-overlay z-[100] bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_32%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.02),transparent_35%,rgba(255,255,255,0.02)_65%,transparent)] opacity-40" />
 
-      <div className="relative flex h-full flex-col px-6 py-8 sm:px-10">
-        <div className="flex items-center justify-between text-sm text-slate-300">
+      <div className="relative flex h-full min-h-0 flex-col px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-10 sm:py-8">
+        <div className="flex shrink-0 items-center justify-between gap-3 text-sm text-slate-300">
           <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5">
             Incoming {isVideoCall ? "video" : "voice"} call
           </span>
@@ -45,18 +45,18 @@ const IncomingCallDialog = ({
           </span>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="mobile-safe-scroll flex flex-1 flex-col items-center justify-center py-6 text-center">
           <div className="relative">
             <div className="absolute inset-[-32px] rounded-full border border-cyan-300/10" />
             <div className="absolute inset-[-18px] animate-pulse rounded-full bg-cyan-400/8 blur-xl" />
             <img
               src={callerImage || "/avatar.png"}
               alt={callerUsername}
-              className="relative h-40 w-40 rounded-full object-cover ring-2 ring-white/10 sm:h-48 sm:w-48"
+              className="relative h-32 w-32 rounded-full object-cover ring-2 ring-white/10 sm:h-48 sm:w-48"
             />
           </div>
 
-          <p className="mt-10 font-['Space_Grotesk'] text-4xl font-semibold tracking-[-0.03em] sm:text-5xl">
+          <p className="mt-8 font-['Space_Grotesk'] text-3xl font-semibold tracking-[-0.03em] sm:mt-10 sm:text-5xl">
             {callerUsername || "Unknown caller"}
           </p>
           <p className="mt-3 text-base text-slate-400 sm:text-lg">
@@ -78,7 +78,7 @@ const IncomingCallDialog = ({
             )}
           </div>
 
-          <div className="mt-16 flex items-center gap-10">
+          <div className="mt-10 flex items-center gap-10 sm:mt-16">
             <div className="flex flex-col items-center gap-3">
               <button
                 onClick={rejectIncomingCallRequest}

@@ -36,6 +36,7 @@ import { useConnectionQuality } from "./hooks/useConnectionQuality";
 import { useCallMediaControls } from "./hooks/useCallMediaControls";
 import { useSpeakingParticipants } from "./hooks/useSpeakingParticipants";
 import GroupParticipantTile from "./GroupParticipantTile";
+import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 
 const createCallToneController = (pattern = "incoming") => {
   let audioContext = null;
@@ -175,10 +176,10 @@ function GroupIncomingCallDialog({ incomingCall, isMobile }) {
   const isVideoCall = incomingCall?.callType === "video";
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_32%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
+    <div className="mobile-viewport-overlay z-[100] bg-[radial-gradient(circle_at_top,_rgba(236,72,153,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_32%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.02),transparent_35%,rgba(255,255,255,0.02)_65%,transparent)] opacity-40" />
-      <div className={`relative flex h-full flex-col ${isMobile ? "px-5 py-6" : "px-6 py-8 sm:px-10"}`}>
-        <div className="flex items-center justify-between text-sm text-slate-300">
+      <div className={`relative flex h-full min-h-0 flex-col ${isMobile ? "px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]" : "px-6 py-8 sm:px-10"}`}>
+        <div className="flex shrink-0 items-center justify-between gap-3 text-sm text-slate-300">
           <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5">
             Incoming group {isVideoCall ? "video" : "voice"} call
           </span>
@@ -187,7 +188,7 @@ function GroupIncomingCallDialog({ incomingCall, isMobile }) {
           </span>
         </div>
 
-        <div className="relative flex flex-1 flex-col items-center justify-center text-center">
+        <div className="mobile-safe-scroll relative flex flex-1 flex-col items-center justify-center py-6 text-center">
           <div className="pointer-events-none absolute inset-[-18px] rounded-full bg-cyan-400/8 blur-xl" />
           <div className={`relative flex items-center justify-center rounded-full bg-white/10 ring-2 ring-white/10 ${isMobile ? "h-32 w-32" : "h-40 w-40 sm:h-48 sm:w-48"}`}>
             <Users className="h-16 w-16 text-cyan-200" />
@@ -240,9 +241,9 @@ function GroupCallingDialog({ session, participantCount, isMobile }) {
   const isVideoCall = session?.callType === "video";
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(239,93,168,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_34%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
-      <div className={`relative flex h-full flex-col ${isMobile ? "px-5 py-6" : "px-6 py-8 sm:px-10"}`}>
-        <div className="flex items-center justify-between text-sm text-slate-300">
+    <div className="mobile-viewport-overlay z-[100] bg-[radial-gradient(circle_at_top,_rgba(239,93,168,0.14),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(34,211,238,0.12),_transparent_34%),linear-gradient(180deg,#040711_0%,#070d19_100%)] text-white">
+      <div className={`relative flex h-full min-h-0 flex-col ${isMobile ? "px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))]" : "px-6 py-8 sm:px-10"}`}>
+        <div className="flex shrink-0 items-center justify-between gap-3 text-sm text-slate-300">
           <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5">
             Outgoing group {isVideoCall ? "video" : "voice"} call
           </span>
@@ -252,7 +253,7 @@ function GroupCallingDialog({ session, participantCount, isMobile }) {
           </span>
         </div>
 
-        <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="mobile-safe-scroll flex flex-1 flex-col items-center justify-center py-6 text-center">
           <div className={`relative flex items-center justify-center rounded-full bg-white/10 ring-2 ring-white/10 ${isMobile ? "h-32 w-32" : "h-40 w-40 sm:h-48 sm:w-48"}`}>
             <Users className="h-16 w-16 text-cyan-200" />
           </div>
@@ -316,6 +317,13 @@ const DirectCall = (props) => {
   const isIncomingCall = callState === callStates.CALL_RINGING;
   const isDirectCallConnected = callState === callStates.CALL_CONNECTED;
   const isDirectCallScreenVisible = isDirectCallVisible(callState);
+  useMobileFocusGuard(
+    isMobile &&
+      (isDirectCallScreenVisible ||
+        isGroupCallIncoming ||
+        isGroupCallActive ||
+        groupCallConnecting)
+  );
   const remoteParticipants = useMemo(
     () => (groupCallParticipants || []).filter((participant) => participant.stream && participant.stream !== localStream),
     [groupCallParticipants, localStream]
@@ -483,7 +491,7 @@ const DirectCall = (props) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[90] h-[var(--app-viewport-height,100dvh)] w-screen max-w-full overflow-hidden bg-[#040711]/98 backdrop-blur-xl">
+    <div className="mobile-viewport-overlay z-[90] max-w-full bg-[#040711]/98 backdrop-blur-xl">
       {callRejected.rejected && (
         <CallRejectedDialog
           reason={callRejected.reason}
@@ -512,10 +520,10 @@ const DirectCall = (props) => {
       {isGroupCallActive && !groupCallConnecting && (
         <div
           ref={callScreenRef}
-          className="grid h-full w-full max-w-full min-h-0 grid-cols-1 overflow-hidden text-white xl:grid-cols-[minmax(0,1fr)_340px]"
+          className="grid h-full min-h-0 w-full max-w-full grid-cols-1 overflow-hidden text-white xl:grid-cols-[minmax(0,1fr)_340px]"
         >
           <div className="relative min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_35%),linear-gradient(180deg,#0b1020_0%,#090d18_100%)]">
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 px-4 py-4 sm:px-6 sm:py-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
               <div className="pointer-events-auto flex items-center gap-3 rounded-[24px] border border-white/10 bg-black/30 px-3 py-3 text-white shadow-[0_24px_60px_rgba(2,8,23,0.28)] backdrop-blur-xl sm:px-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/10 sm:h-14 sm:w-14">
                   <Users className="h-5 w-5 text-cyan-200" />
@@ -545,7 +553,7 @@ const DirectCall = (props) => {
             </div>
 
             <div
-              className={`grid h-full gap-4 overflow-y-auto px-4 pb-28 pt-28 sm:px-6 sm:pb-32 sm:pt-32 ${
+              className={`grid h-full gap-4 overflow-y-auto px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-[calc(7rem+env(safe-area-inset-top))] sm:px-6 sm:pb-32 sm:pt-32 ${
                 isVideoCall
                   ? hasSingleRemoteParticipant && localParticipant
                     ? "grid-cols-1"
@@ -644,12 +652,12 @@ const DirectCall = (props) => {
       {!isGroupCallActive && isDirectCallScreenVisible && !isIncomingCall && (
         <div
           ref={callScreenRef}
-          className="grid h-full w-full max-w-full min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_340px]"
+          className="grid h-full min-h-0 w-full max-w-full grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_340px]"
         >
           <div className="relative min-h-0 overflow-hidden">
             <RemoteAudioPlayer remoteStream={remoteStream} />
 
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 px-4 py-4 sm:px-6 sm:py-6">
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex flex-wrap items-start justify-between gap-3 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
               <div className="pointer-events-auto flex items-center gap-3 rounded-[24px] border border-white/10 bg-black/30 px-3 py-3 text-white shadow-[0_24px_60px_rgba(2,8,23,0.28)] backdrop-blur-xl sm:px-4">
                 <img
                   src={callerImage || "/avatar.png"}
