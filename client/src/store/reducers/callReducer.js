@@ -86,7 +86,7 @@ const reducer = (state = initState, action) => {
       return {
         ...state,
         callState: callActions.callStates.CALL_IDLE,
-        localStream: state.localStream,
+        localStream: null,
         remoteStream: null,
         screenSharingActive: false,
         callerUsername: "",

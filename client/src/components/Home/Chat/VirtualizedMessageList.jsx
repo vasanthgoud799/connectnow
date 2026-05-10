@@ -52,14 +52,15 @@ const VirtualizedMessageList = forwardRef(function VirtualizedMessageList(
       },
       scrollToMessageId: (messageId) => {
         const container = containerRef.current;
-        if (!container) return;
+        if (!container) return false;
         const escapedMessageId =
           typeof CSS !== "undefined" && typeof CSS.escape === "function"
             ? CSS.escape(String(messageId))
             : String(messageId).replace(/"/g, '\\"');
-        container
-          .querySelector(`[data-message-id="${escapedMessageId}"]`)
-          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+        const target = container.querySelector(`[data-message-id="${escapedMessageId}"]`);
+        if (!target) return false;
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+        return true;
       },
     }),
     []

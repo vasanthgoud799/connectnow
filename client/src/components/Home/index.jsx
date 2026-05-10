@@ -422,10 +422,10 @@ function Home({ activeUsers = [], callState }) {
     }
   };
 
-  const openConversationFromGlobalSearch = ({ payload }) => {
+  const openConversationFromGlobalSearch = ({ payload, messageId }) => {
     setActiveSection("chats");
     setSelectedChatData(payload);
-    setFocusedMessageId(undefined);
+    setFocusedMessageId(messageId ? String(messageId) : undefined);
     if (isMobile) {
       setForceOpenMobileChat(true);
       setMobileChatView("chat");

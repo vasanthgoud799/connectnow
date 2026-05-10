@@ -1428,16 +1428,12 @@ export const hangUp = () => {
 };
 
 const resetCallDataAfterHangUp = () => {
+  const { localStream, screenSharingActive } = getCallState();
+
   closePeerConnection();
   resetCallData();
 
-  const { localStream, screenSharingActive } = getCallState();
-  if (localStream?.getVideoTracks?.()[0]) {
-    localStream.getVideoTracks()[0].enabled = true;
-  }
-  if (localStream?.getAudioTracks?.()[0]) {
-    localStream.getAudioTracks()[0].enabled = true;
-  }
+  stopStreamTracks(localStream);
 
   if (screenSharingActive) {
     stopStreamTracks(callContext.screenSharingStream);

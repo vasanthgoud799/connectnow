@@ -14,7 +14,10 @@ function highlightMatch(text, query) {
 
   return parts.map((part, index) =>
     part.toLowerCase() === query.toLowerCase() ? (
-      <mark key={`${part}-${index}`} className="rounded bg-cyan-300/35 px-1 text-inherit">
+      <mark
+        key={`${part}-${index}`}
+        className="break-words rounded bg-cyan-300/35 px-1 text-inherit [overflow-wrap:anywhere]"
+      >
         {part}
       </mark>
     ) : (
@@ -53,6 +56,10 @@ function Search({ onClose }) {
 
     const normalizedQuery = debouncedSearch.toLowerCase();
     return selectedChatMessages.filter((message) => {
+      const expiresAt = message.expiresAt ? new Date(message.expiresAt).getTime() : null;
+      if (expiresAt && expiresAt <= Date.now()) return false;
+      if (message.isDeleted || message.deletedAt || message.isDeletedForEveryone) return false;
+
       const previewText = [
         message.decryptedContent,
         message.content,
@@ -61,6 +68,9 @@ function Search({ onClose }) {
           ? message.meta.poll.options.map((option) => option.text)
           : []),
         message.fileName,
+        message.originalFileName,
+        message.mediaMetadata?.originalFileName,
+        message.fileUrl,
       ]
         .filter(Boolean)
         .join(" ")
@@ -74,12 +84,25 @@ function Search({ onClose }) {
     setActiveResultIndex(0);
   }, [debouncedSearch, selectedChatData?._id]);
 
+  useEffect(() => {
+    if (activeResultIndex >= results.length) {
+      setActiveResultIndex(Math.max(results.length - 1, 0));
+    }
+  }, [activeResultIndex, results.length]);
+
   const resolvePreviewText = (message) => {
     if (message.messageType === "poll") {
       return message.meta?.poll?.question || "Poll";
     }
 
-    return message.content || "Attachment";
+    return (
+      message.content ||
+      message.decryptedContent ||
+      message.fileName ||
+      message.mediaMetadata?.originalFileName ||
+      message.messageType ||
+      "Attachment"
+    );
   };
 
   const jumpToMessage = (message) => {
@@ -95,7 +118,7 @@ function Search({ onClose }) {
   };
 
   return (
-    <div className="themed-shell themed-chat-canvas flex h-full min-h-0 flex-col overflow-hidden">
+    <div className="themed-shell themed-chat-canvas flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <MobileSafeHeader>
         <button
           type="button"
@@ -105,15 +128,19 @@ function Search({ onClose }) {
         >
           <X className="themed-title h-[18px] w-[18px]" />
         </button>
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <p className="themed-title font-['Space_Grotesk'] text-xl font-semibold">Search messages</p>
           <p className="themed-subtitle text-xs">Find text inside the current conversation</p>
         </div>
-        {results.length > 0 && (
+        {debouncedSearch && (
           <div className="flex shrink-0 items-center gap-1">
+            <span className="themed-chip inline-flex rounded-full px-2 py-1 text-xs">
+              {results.length ? `${activeResultIndex + 1}/${results.length}` : "0/0"}
+            </span>
             <button
               type="button"
               onClick={() => jumpToResultIndex(activeResultIndex - 1)}
+              disabled={!results.length}
               className="themed-panel-soft inline-flex h-9 w-9 items-center justify-center rounded-xl"
               aria-label="Previous match"
             >
@@ -122,6 +149,7 @@ function Search({ onClose }) {
             <button
               type="button"
               onClick={() => jumpToResultIndex(activeResultIndex + 1)}
+              disabled={!results.length}
               className="themed-panel-soft inline-flex h-9 w-9 items-center justify-center rounded-xl"
               aria-label="Next match"
             >
@@ -131,13 +159,13 @@ function Search({ onClose }) {
         )}
       </MobileSafeHeader>
 
-      <div className="px-4 pb-3 pt-4">
-        <div className="themed-input flex items-center rounded-[24px] px-4 py-3">
+      <div className="min-w-0 px-4 pb-3 pt-4">
+        <div className="themed-input flex min-w-0 items-center rounded-[24px] px-4 py-3">
           <SearchIcon className="themed-subtitle h-4 w-4" />
           <input
             type="text"
             placeholder="Search in this chat"
-            className="themed-title themed-subtitle flex-1 bg-transparent px-3 text-base outline-none"
+            className="themed-title themed-subtitle min-w-0 flex-1 bg-transparent px-3 text-base outline-none"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
           />
@@ -146,7 +174,7 @@ function Search({ onClose }) {
 
       <Separator className="bg-white/10" />
 
-      <div className="no-scrollbar flex-1 overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-1">
         {!searchText.trim() ? (
           <StatePanel
             icon={Sparkles}
@@ -162,11 +190,11 @@ function Search({ onClose }) {
             className="rounded-[24px]"
           />
         ) : (
-          <div className="space-y-3">
+          <div className="min-w-0 space-y-3">
             {results.map((message, index) => (
               <div
                 key={message._id || message.id || message.timestamp}
-                className={`themed-page-card cursor-pointer rounded-[24px] p-4 transition hover:scale-[1.01] ${
+                className={`themed-page-card min-w-0 cursor-pointer overflow-hidden rounded-[24px] p-4 transition hover:scale-[1.01] ${
                   index === activeResultIndex ? "ring-1 ring-cyan-300/40" : ""
                 }`}
                 onClick={() => {
@@ -174,8 +202,8 @@ function Search({ onClose }) {
                   jumpToMessage(message);
                 }}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <p className="themed-title text-sm leading-6">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <p className="themed-title min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
                     {highlightMatch(resolvePreviewText(message), searchText)}
                   </p>
                   {!localMessageIds.has(String(message._id || message.id)) && (
@@ -185,7 +213,7 @@ function Search({ onClose }) {
                   )}
                 </div>
                 <p className="themed-subtitle mt-2 text-xs">
-                  {new Date(message.timestamp).toLocaleString()}
+                  {new Date(message.timestamp || message.createdAt).toLocaleString()}
                 </p>
               </div>
             ))}

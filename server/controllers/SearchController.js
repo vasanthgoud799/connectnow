@@ -17,26 +17,36 @@ export const buildGlobalMessageSearchQuery = ({
 }) => {
   const messageQuery = {
     deletedFor: { $ne: userId },
+    deletedAt: null,
+    isDeletedForEveryone: { $ne: true },
     conversationKey: { $in: accessibleConversationKeys },
   };
   const contentFilters =
     tab === "files"
-      ? [{ fileUrl: regex }, { content: regex }]
+      ? [
+          { fileUrl: regex },
+          { content: regex },
+          { "encryption.originalFileName": regex },
+          { "mediaEncryption.originalFileName": regex },
+        ]
       : [
           { content: regex },
           { "meta.poll.question": regex },
           { "meta.poll.options.text": regex },
           { fileUrl: regex },
+          { "encryption.originalFileName": regex },
+          { "mediaEncryption.originalFileName": regex },
         ];
 
   if (tab === "files") {
     messageQuery.messageType = { $in: ["image", "video", "audio", "document"] };
   }
 
-  messageQuery.$and = [
-    buildNonExpiredMessageQuery(),
-    { $or: contentFilters },
-  ];
+  messageQuery.$and = [buildNonExpiredMessageQuery()];
+
+  if (!isDateSearch) {
+    messageQuery.$and.push({ $or: contentFilters });
+  }
 
   if (isDateSearch) {
     const start = new Date(dateValue);
@@ -47,6 +57,79 @@ export const buildGlobalMessageSearchQuery = ({
   }
 
   return messageQuery;
+};
+
+const FILE_MESSAGE_TYPES = new Set(["image", "video", "audio", "document"]);
+
+const getObjectId = (value) => String(value?._id || value || "");
+
+const getMessageFileName = (message) => {
+  const explicitName =
+    message.fileName ||
+    message.originalFileName ||
+    message.mediaMetadata?.originalFileName ||
+    message.mediaEncryption?.originalFileName;
+
+  if (explicitName) return explicitName;
+
+  const fileUrl = String(message.fileUrl || message.secureUrl || "");
+  if (!fileUrl) return "";
+
+  try {
+    return decodeURIComponent(fileUrl.split("/").pop() || "");
+  } catch {
+    return fileUrl.split("/").pop() || "";
+  }
+};
+
+const getMessageSnippet = (message) => {
+  const fileName = getMessageFileName(message);
+  const text =
+    message.content ||
+    message.decryptedContent ||
+    message.meta?.poll?.question ||
+    fileName ||
+    message.messageType ||
+    "";
+
+  const normalized = String(text).replace(/\s+/g, " ").trim();
+  if (normalized.length <= 180) return normalized;
+  return `${normalized.slice(0, 177)}...`;
+};
+
+export const serializeGlobalSearchMessage = (message = {}, currentUserId) => {
+  const senderId = getObjectId(message.sender);
+  const recipientId = getObjectId(message.recipient);
+  const groupId = getObjectId(message.group);
+  const chatType = message.chatType || (groupId ? "group" : "direct");
+  const messageId = getObjectId(message);
+  const fileName = getMessageFileName(message);
+
+  return {
+    _id: messageId,
+    id: messageId,
+    messageId,
+    conversationKey: message.conversationKey,
+    chatType,
+    chatId:
+      chatType === "group"
+        ? groupId
+        : senderId === String(currentUserId)
+          ? recipientId
+          : senderId,
+    groupId: chatType === "group" ? groupId : undefined,
+    sender: message.sender,
+    recipient: message.recipient,
+    group: message.group,
+    content: message.content || message.decryptedContent || "",
+    snippet: getMessageSnippet(message),
+    messageType: message.messageType || "text",
+    fileUrl: message.fileUrl || message.secureUrl || "",
+    fileName,
+    mediaMetadata: message.mediaMetadata,
+    createdAt: message.createdAt,
+    timestamp: message.timestamp || message.createdAt,
+  };
 };
 
 export const globalSearch = async (req, res) => {
@@ -62,18 +145,35 @@ export const globalSearch = async (req, res) => {
     }
 
     const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
-    const dateValue = new Date(query);
+    const normalizedQuery = query.toLowerCase();
+    const dateValue = normalizedQuery === "today" ? new Date() : new Date(query);
     const isDateSearch = !Number.isNaN(dateValue.getTime());
 
     const accessibleChats = await Chat.find({
       participants: req.userId,
     })
-      .select("conversationKey")
+      .select("conversationKey chatType group participants")
       .lean();
 
     const accessibleConversationKeys = accessibleChats.map(
       (chat) => chat.conversationKey
     );
+    const accessibleGroupIds = accessibleChats
+      .filter((chat) => chat.chatType === "group" && chat.group)
+      .map((chat) => chat.group);
+    const accessibleDirectParticipantIds = accessibleChats
+      .filter((chat) => chat.chatType !== "group")
+      .flatMap((chat) => chat.participants || [])
+      .map((participantId) => String(participantId))
+      .filter((participantId) => participantId !== String(req.userId));
+
+    const currentUser = await User.findById(req.userId).select("friends").lean();
+    const contactIds = [
+      ...new Set([
+        ...(currentUser?.friends || []).map((friendId) => String(friendId)),
+        ...accessibleDirectParticipantIds,
+      ]),
+    ];
 
     const results = {
       users: [],
@@ -84,6 +184,7 @@ export const globalSearch = async (req, res) => {
 
     if (tab === "all" || tab === "users") {
       results.users = await User.find({
+        _id: { $in: contactIds },
         $or: [{ firstName: regex }, { lastName: regex }, { email: regex }],
       })
         .select("firstName lastName email image status")
@@ -94,6 +195,7 @@ export const globalSearch = async (req, res) => {
 
     if (tab === "all" || tab === "groups") {
       results.groups = await Group.find({
+        _id: { $in: accessibleGroupIds },
         $or: [{ name: regex }, { description: regex }],
       })
         .select("name description image inviteToken members")
@@ -122,15 +224,18 @@ export const globalSearch = async (req, res) => {
         .lean();
 
       await hydrateMessagesMediaForUser({ messages: messageResults, req });
+      const serializedMessages = messageResults.map((message) =>
+        serializeGlobalSearchMessage(message, req.userId)
+      );
 
       if (tab === "files") {
-        results.files = messageResults;
+        results.files = serializedMessages;
       } else {
-        results.messages = messageResults.filter(
-          (message) => !["image", "video", "audio", "document"].includes(message.messageType)
+        results.messages = serializedMessages.filter(
+          (message) => !FILE_MESSAGE_TYPES.has(message.messageType)
         );
-        results.files = messageResults.filter((message) =>
-          ["image", "video", "audio", "document"].includes(message.messageType)
+        results.files = serializedMessages.filter((message) =>
+          FILE_MESSAGE_TYPES.has(message.messageType)
         );
       }
     }

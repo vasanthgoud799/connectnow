@@ -31,6 +31,14 @@ const GroupParticipantTile = ({
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const mediaSignature = useMemo(
+    () =>
+      participant?.stream
+        ?.getTracks?.()
+        .map((track) => `${track.kind}:${track.id}:${track.readyState}:${track.muted}`)
+        .join("|") || "",
+    [participant?.stream]
+  );
 
   useEffect(() => {
     if (!participant?.stream) return undefined;
@@ -39,14 +47,31 @@ const GroupParticipantTile = ({
     const audio = audioRef.current;
 
     if (video) {
-      video.srcObject = participant.stream;
-      video.onloadedmetadata = () => {
+      video.srcObject = new MediaStream(participant.stream.getVideoTracks?.() || []);
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = isLocalParticipant;
+
+      const playVideo = () => {
         video.play().catch(() => {});
       };
+      video.onloadedmetadata = playVideo;
+      video.oncanplay = playVideo;
+      playVideo();
     }
 
     if (audio && !isLocalParticipant) {
-      audio.srcObject = participant.stream;
+      const audioTracks = participant.stream.getAudioTracks?.() || [];
+      audioTracks.forEach((track) => {
+        if (track.readyState === "live") {
+          track.enabled = true;
+        }
+      });
+      audio.srcObject = new MediaStream(audioTracks);
+      audio.autoplay = true;
+      audio.playsInline = true;
+      audio.muted = false;
+      audio.volume = 1;
       audio
         .play()
         .then(() => setPlaybackBlocked(false))
@@ -58,9 +83,10 @@ const GroupParticipantTile = ({
     return () => {
       if (video) {
         video.onloadedmetadata = null;
+        video.oncanplay = null;
       }
     };
-  }, [isLocalParticipant, participant?.stream]);
+  }, [isLocalParticipant, mediaSignature, participant?.stream]);
 
   const label =
     participant?.displayName ||
@@ -80,7 +106,7 @@ const GroupParticipantTile = ({
           : "border-white/10"
       } ${className}`}
     >
-      {!isLocalParticipant && <audio ref={audioRef} autoPlay />}
+      {!isLocalParticipant && <audio ref={audioRef} autoPlay playsInline muted={false} />}
       {mediaState.hasVideo ? (
         <video
           ref={videoRef}

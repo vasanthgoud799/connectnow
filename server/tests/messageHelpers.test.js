@@ -104,6 +104,8 @@ test("global message search keeps non-expired and content filters together", () 
       { "meta.poll.question": regex },
       { "meta.poll.options.text": regex },
       { fileUrl: regex },
+      { "encryption.originalFileName": regex },
+      { "mediaEncryption.originalFileName": regex },
     ],
   });
 });
@@ -121,7 +123,12 @@ test("global file search filters expired attachment messages", () => {
     $in: ["image", "video", "audio", "document"],
   });
   assert.deepEqual(query.$and[1], {
-    $or: [{ fileUrl: regex }, { content: regex }],
+    $or: [
+      { fileUrl: regex },
+      { content: regex },
+      { "encryption.originalFileName": regex },
+      { "mediaEncryption.originalFileName": regex },
+    ],
   });
   assert.ok(query.$and[0].$or[2].expiresAt.$gt instanceof Date);
 });

@@ -1906,17 +1906,23 @@ function Chat({
 
   useEffect(() => {
     if (!focusedMessageId) return;
+    const targetExists = selectedChatMessages.some(
+      (message) => String(message._id || message.id) === String(focusedMessageId)
+    );
+    if (!targetExists) return;
 
     const timeoutId = setTimeout(() => {
-      messageListRef.current?.scrollToMessageId(focusedMessageId);
+      const didScroll = messageListRef.current?.scrollToMessageId(focusedMessageId);
 
-      setTimeout(() => {
-        setFocusedMessageId(undefined);
-      }, 1800);
+      if (didScroll) {
+        setTimeout(() => {
+          setFocusedMessageId(undefined);
+        }, 1800);
+      }
     }, 60);
 
     return () => clearTimeout(timeoutId);
-  }, [focusedMessageId, setFocusedMessageId]);
+  }, [focusedMessageId, selectedChatMessages, setFocusedMessageId]);
 
   useEffect(() => {
     if (!isMobile) return undefined;
@@ -2915,22 +2921,22 @@ function Chat({
 
     return (
       <div
-        className={`flex ${isSender ? "justify-end" : "justify-start"} py-1`}
+        className={`flex w-full min-w-0 overflow-x-hidden ${isSender ? "justify-end" : "justify-start"} py-1`}
         data-testid={`chat-message-row-${String(message._id || message.id)}`}
       >
         <div
           data-message-id={String(message._id || message.id)}
-          className={`flex ${isMobile ? "max-w-[86%]" : "max-w-[72%]"} min-w-0 items-end gap-3 ${
+          className={`flex ${isMobile ? "max-w-[86%]" : "max-w-[72%]"} min-w-0 max-w-full items-end gap-3 ${
             isSender ? "flex-row-reverse" : ""
           } ${focusedMessageId === String(message._id || message.id) ? "rounded-[28px] ring-2 ring-cyan-300/70 ring-offset-4 ring-offset-transparent" : ""}`}
         >
           {!isSender && (
-            <div className="themed-received-avatar flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold">
+            <div className="themed-received-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold">
               {(selectedChatData?.firstName || "R")[0]}
             </div>
           )}
 
-          <div className="min-w-0 max-w-full">
+          <div className="min-w-0 max-w-full overflow-hidden">
             {isGroupChat && !isSender && message.messageType !== "system" && (
               <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.22em] text-cyan-200/80">
                 {typeof message.sender === "string"
@@ -2945,12 +2951,12 @@ function Chat({
                 Forwarded
               </p>
             )}
-            <div className="flex items-start gap-2">
+            <div className="flex min-w-0 max-w-full items-start gap-2">
               {message.messageType === "poll" ? (
-                <div className="min-w-0">{renderMessageBody(message)}</div>
+                <div className="min-w-0 max-w-full overflow-hidden">{renderMessageBody(message)}</div>
               ) : (
                 <div
-                  className={`min-w-0 max-w-full overflow-hidden rounded-[22px] ${
+                  className={`min-w-0 max-w-full overflow-hidden break-words rounded-[22px] [overflow-wrap:anywhere] ${
                     ["image", "video"].includes(String(message.messageType || "").toLowerCase())
                       ? "p-2"
                       : "px-4 py-3"
@@ -3222,7 +3228,7 @@ function Chat({
       }
 
       return (
-        <p className="whitespace-pre-wrap break-words text-[15px]">
+        <p className="whitespace-pre-wrap break-words text-[15px] [overflow-wrap:anywhere]">
           {renderTextWithMentions(displayText)}
         </p>
       );
@@ -3245,7 +3251,7 @@ function Chat({
             {message.mediaEncryption?.enabled ? "Old encrypted message" : fallbackLabel}
           </p>
           {attachmentCaption ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-6">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
               {renderTextWithMentions(attachmentCaption)}
             </p>
           ) : null}
@@ -3266,7 +3272,7 @@ function Chat({
             }}
           />
           {attachmentCaption ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-6">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
               {renderTextWithMentions(attachmentCaption)}
             </p>
           ) : null}
@@ -3283,7 +3289,7 @@ function Chat({
             src={getSafeMediaUrl(message.fileUrl)}
           />
           {attachmentCaption ? (
-            <p className="whitespace-pre-wrap break-words text-sm leading-6">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">
               {renderTextWithMentions(attachmentCaption)}
             </p>
           ) : null}
@@ -3300,7 +3306,7 @@ function Chat({
             isVoiceNote={String(message.content || "").toLowerCase().includes("voice")}
           />
           {attachmentCaption ? (
-            <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6">
+            <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6 [overflow-wrap:anywhere]">
               {renderTextWithMentions(attachmentCaption)}
             </p>
           ) : null}
@@ -3312,7 +3318,7 @@ function Chat({
       <div className="w-full min-w-0 space-y-3">
         <DocumentMessageCard fileUrl={message.fileUrl} />
         {attachmentCaption ? (
-          <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6">
+          <p className="whitespace-pre-wrap break-words px-1 text-sm leading-6 [overflow-wrap:anywhere]">
             {renderTextWithMentions(attachmentCaption)}
           </p>
         ) : null}

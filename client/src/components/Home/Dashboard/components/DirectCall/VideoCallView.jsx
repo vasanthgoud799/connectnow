@@ -21,9 +21,24 @@ const VideoCallView = ({
     const video = remoteVideoRef.current;
     if (!video || !remoteStream) return;
 
-    video.srcObject = remoteStream;
-    video.onloadedmetadata = () => {
+    const remoteVideoTracks = remoteStream.getVideoTracks?.() || [];
+    video.srcObject = new MediaStream(remoteVideoTracks);
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = false;
+    video.volume = 1;
+
+    const playRemoteVideo = () => {
       video.play().catch(() => {});
+    };
+
+    video.onloadedmetadata = playRemoteVideo;
+    video.oncanplay = playRemoteVideo;
+    playRemoteVideo();
+
+    return () => {
+      video.onloadedmetadata = null;
+      video.oncanplay = null;
     };
   }, [remoteStream]);
 
@@ -37,6 +52,7 @@ const VideoCallView = ({
           className="h-full w-full object-cover"
           autoPlay
           playsInline
+          muted={false}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_35%),linear-gradient(180deg,#050913_0%,#0b1220_100%)] px-6 text-white">
