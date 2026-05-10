@@ -1,6 +1,8 @@
 import {
+  areSameMessage,
   getMessageConversationKey,
   getMessageId,
+  mergeMessageRecords,
   mergeMessages,
   normalizeMessage,
   removeMessage,
@@ -49,6 +51,44 @@ const getLastMessageClientId = (lastMessage = {}) =>
       lastMessage.requestId ||
       ""
   );
+
+const MESSAGE_STATUS_RANK = {
+  failed: -1,
+  sending: 0,
+  sent: 1,
+  delivered: 2,
+  seen: 3,
+};
+
+const getNewestMessageStatus = (currentStatus, nextStatus) => {
+  const currentRank = MESSAGE_STATUS_RANK[currentStatus] ?? 1;
+  const nextRank = MESSAGE_STATUS_RANK[nextStatus] ?? 1;
+  return nextRank >= currentRank
+    ? nextStatus || currentStatus || "sent"
+    : currentStatus || nextStatus || "sent";
+};
+
+const mergeLoadedMessagesWithCachedReceipts = (
+  incomingMessages = [],
+  cachedMessages = []
+) => {
+  const normalizedIncomingMessages = mergeMessages([], incomingMessages);
+  const normalizedCachedMessages = Array.isArray(cachedMessages)
+    ? cachedMessages.map((message) => normalizeMessage(message)).filter(Boolean)
+    : [];
+
+  if (!normalizedCachedMessages.length) return normalizedIncomingMessages;
+
+  return normalizedIncomingMessages.map((incomingMessage) => {
+    const cachedMessage = normalizedCachedMessages.find((message) =>
+      areSameMessage(message, incomingMessage)
+    );
+
+    return cachedMessage
+      ? mergeMessageRecords(cachedMessage, incomingMessage)
+      : incomingMessage;
+  });
+};
 
 export const createChatSlice = (set, get) => ({
   selectedChatData: undefined,
@@ -103,7 +143,15 @@ export const createChatSlice = (set, get) => ({
     }),
   setConversationMessages: (conversationKey, messages, { loaded = true } = {}) =>
     set((state) => {
-      const normalizedMessages = mergeMessages([], messages);
+      const cachedMessages = Array.isArray(
+        state.messagesByConversationKey?.[conversationKey]
+      )
+        ? state.messagesByConversationKey[conversationKey]
+        : [];
+      const normalizedMessages = mergeLoadedMessagesWithCachedReceipts(
+        messages,
+        cachedMessages
+      );
       return {
         messagesByConversationKey: {
           ...state.messagesByConversationKey,
@@ -239,6 +287,10 @@ export const createChatSlice = (set, get) => ({
           lastMessage: {
             ...chat.lastMessage,
             ...statusPayload,
+            status: getNewestMessageStatus(
+              chat.lastMessage?.status,
+              statusPayload.status
+            ),
           },
         };
       }),
@@ -284,7 +336,10 @@ export const createChatSlice = (set, get) => ({
                   content: normalizedNextMessage.content,
                   messageType: normalizedNextMessage.messageType,
                   timestamp: normalizedNextMessage.timestamp,
-                  status: normalizedNextMessage.status,
+                  status: getNewestMessageStatus(
+                    chat.lastMessage?.status,
+                    normalizedNextMessage.status
+                  ),
                 },
                 updatedAt: normalizedNextMessage.timestamp || chat.updatedAt,
               }
@@ -403,7 +458,10 @@ export const createChatSlice = (set, get) => ({
           content: normalizedMessage.content,
           messageType: normalizedMessage.messageType,
           timestamp: normalizedMessage.timestamp,
-          status: normalizedMessage.status,
+          status: getNewestMessageStatus(
+            existingChat.lastMessage?.status,
+            normalizedMessage.status
+          ),
         },
         updatedAt: normalizedMessage.timestamp,
         unreadCount: nextUnreadCount,

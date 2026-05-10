@@ -6,8 +6,14 @@ const setViewportVars = () => {
   }
 
   const visualViewport = window.visualViewport;
-  const rawViewportHeight = Math.max(240, Math.round(visualViewport?.height || window.innerHeight || 0));
-  const rawViewportWidth = Math.max(240, Math.round(visualViewport?.width || window.innerWidth || 0));
+  const rawViewportHeight = Math.max(
+    240,
+    Math.round(visualViewport?.height || window.innerHeight || 0)
+  );
+  const rawViewportWidth = Math.max(
+    240,
+    Math.round(visualViewport?.width || window.innerWidth || 0)
+  );
   const viewportOffsetTop = Math.max(
     0,
     Math.round(visualViewport?.offsetTop || 0)
@@ -80,12 +86,12 @@ export function useVisualViewportHeight() {
     const visualViewport = window.visualViewport;
     update();
 
-    window.addEventListener("resize", update);
+    window.addEventListener("resize", updateDuringViewportAnimation);
     window.addEventListener("orientationchange", updateDuringViewportAnimation);
     window.addEventListener("focusin", updateDuringViewportAnimation);
     window.addEventListener("focusout", updateDuringViewportAnimation);
-    visualViewport?.addEventListener("resize", update);
-    visualViewport?.addEventListener("scroll", update);
+    visualViewport?.addEventListener("resize", updateDuringViewportAnimation);
+    visualViewport?.addEventListener("scroll", updateDuringViewportAnimation);
 
     return () => {
       if (frameId) {
@@ -94,12 +100,12 @@ export function useVisualViewportHeight() {
       timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       timeoutIds.clear();
 
-      window.removeEventListener("resize", update);
+      window.removeEventListener("resize", updateDuringViewportAnimation);
       window.removeEventListener("orientationchange", updateDuringViewportAnimation);
       window.removeEventListener("focusin", updateDuringViewportAnimation);
       window.removeEventListener("focusout", updateDuringViewportAnimation);
-      visualViewport?.removeEventListener("resize", update);
-      visualViewport?.removeEventListener("scroll", update);
+      visualViewport?.removeEventListener("resize", updateDuringViewportAnimation);
+      visualViewport?.removeEventListener("scroll", updateDuringViewportAnimation);
     };
   }, []);
 }

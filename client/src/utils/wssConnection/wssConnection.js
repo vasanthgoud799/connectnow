@@ -27,7 +27,9 @@ const sanitizeRegistrationPayload = (payload) => {
     userId: payload.userId,
     username: payload.username,
     displayName: payload.displayName,
+    firstName: payload.firstName || null,
     email: payload.email || null,
+    image: payload.image || null,
   };
 };
 
@@ -230,7 +232,9 @@ export const connectWithWebSocket = (nextSocket, user) => {
     username: user.firstName || user.email,
     displayName:
       [user.firstName, user.lastName].filter(Boolean).join(" ") || user.email,
+    firstName: user.firstName || "",
     email: user.email || null,
+    image: user.image || null,
   };
   pendingUserRegistration = sanitizeRegistrationPayload(pendingUserRegistration);
 
@@ -259,6 +263,7 @@ export const registerNewUser = (user) => {
       ? {
           username: user,
           displayName: user,
+          firstName: user.split(/\s+/)[0] || user,
         }
       : {
           userId: user.id || user.userId,
@@ -267,7 +272,9 @@ export const registerNewUser = (user) => {
             [user.firstName, user.lastName].filter(Boolean).join(" ") ||
             user.email ||
             user.username,
+          firstName: user.firstName || "",
           email: user.email || null,
+          image: user.image || null,
         };
   pendingUserRegistration = sanitizeRegistrationPayload(pendingUserRegistration);
 

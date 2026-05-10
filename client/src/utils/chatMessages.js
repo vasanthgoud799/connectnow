@@ -10,6 +10,40 @@ const LEGACY_DECRYPT_PLACEHOLDERS = new Set([
   "Unable to decrypt media on this device",
 ]);
 
+const MESSAGE_STATUS_RANK = {
+  failed: -1,
+  sending: 0,
+  sent: 1,
+  delivered: 2,
+  seen: 3,
+};
+
+const getStatusRank = (status) =>
+  Object.prototype.hasOwnProperty.call(MESSAGE_STATUS_RANK, status)
+    ? MESSAGE_STATUS_RANK[status]
+    : 1;
+
+const getNewestStatus = (currentStatus, nextStatus) =>
+  getStatusRank(nextStatus) >= getStatusRank(currentStatus)
+    ? nextStatus || currentStatus || "sent"
+    : currentStatus || nextStatus || "sent";
+
+const mergeReadBy = (currentReadBy = [], nextReadBy = []) => {
+  const byUser = new Map();
+  [...currentReadBy, ...nextReadBy].forEach((entry) => {
+    const userId =
+      typeof entry === "string"
+        ? entry
+        : toStringId(entry?.userId?._id || entry?.userId || entry?._id || entry?.id);
+    if (!userId) return;
+    const existing = byUser.get(userId);
+    const existingTime = new Date(existing?.readAt || 0).getTime();
+    const nextTime = new Date(entry?.readAt || 0).getTime();
+    byUser.set(userId, !existing || nextTime >= existingTime ? entry : existing);
+  });
+  return [...byUser.values()];
+};
+
 export const sanitizeEncryptedMessageText = (value, message = {}) => {
   const text = toStringId(value).trim();
   if (!text) return "";
@@ -141,9 +175,18 @@ export const mergeMessageRecords = (currentMessage, nextMessage) => {
       : normalizedCurrent.uploadStatus) ||
     null;
 
+  const mergedStatus = getNewestStatus(
+    normalizedCurrent.status,
+    normalizedNext.status
+  );
+
   return normalizeMessage({
     ...normalizedCurrent,
     ...normalizedNext,
+    status: mergedStatus,
+    deliveredAt: normalizedNext.deliveredAt || normalizedCurrent.deliveredAt || null,
+    seenAt: normalizedNext.seenAt || normalizedCurrent.seenAt || null,
+    readBy: mergeReadBy(normalizedCurrent.readBy, normalizedNext.readBy),
     content: nextContent || currentContent || "",
     decryptedContent: nextDecryptedContent || currentDecryptedContent || "",
     localPreviewUrl:

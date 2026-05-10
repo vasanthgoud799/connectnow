@@ -844,10 +844,16 @@ const setupSocket = async (server) => {
   const getTypingProfile = async (userId) => {
     const cachedProfile = callProfilesMap.get(String(userId));
     if (cachedProfile) {
+      const displayName =
+        cachedProfile.displayName ||
+        cachedProfile.username ||
+        cachedProfile.email ||
+        "Someone";
       return {
-        name:
-          cachedProfile.displayName ||
-          cachedProfile.username ||
+        name: displayName,
+        firstName:
+          cachedProfile.firstName ||
+          String(displayName).trim().split(/\s+/)[0] ||
           cachedProfile.email ||
           "Someone",
         image: cachedProfile.image || null,
@@ -859,6 +865,7 @@ const setupSocket = async (server) => {
       .lean()
       .catch(() => null);
     return {
+      firstName: user?.firstName || String(user?.email || "Someone").split("@")[0],
       name:
         [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
         user?.email ||
@@ -890,6 +897,7 @@ const setupSocket = async (server) => {
       conversationKey,
       groupId: groupId || undefined,
       userId: senderId,
+      firstName: profile.firstName,
       name: profile.name,
       image: profile.image,
       isTyping,
@@ -1019,6 +1027,11 @@ const setupSocket = async (server) => {
         userId: String(socket.data.userId),
         username: data.username,
         displayName: data.displayName || data.username,
+        firstName:
+          data.firstName ||
+          String(data.displayName || data.username || "")
+            .trim()
+            .split(/\s+/)[0],
         image: data.image || null,
         email: data.email || null,
       };

@@ -1215,8 +1215,9 @@ function Chat({
       conversationKey: resolvedConversationKey,
       groupId: isGroupChat ? selectedChatId : undefined,
       recipientId: isGroupChat ? undefined : selectedChatId,
+      firstName: userInfo?.firstName || "",
     }),
-    [isGroupChat, resolvedConversationKey, selectedChatId]
+    [isGroupChat, resolvedConversationKey, selectedChatId, userInfo?.firstName]
   );
 
   const emitTypingState = useCallback(
@@ -1388,8 +1389,22 @@ function Chat({
       setTypingUsers((current) => {
         const next = { ...current };
         if (payload.isTyping) {
+          const displayName =
+            payload.firstName ||
+            payload.user?.firstName ||
+            payload.displayName ||
+            payload.name ||
+            payload.user?.displayName ||
+            payload.user?.name ||
+            payload.user?.email ||
+            "Someone";
           next[String(typingUserId)] = {
-            name: payload.name || payload.user?.firstName || payload.user?.email || "Someone",
+            firstName:
+              payload.firstName ||
+              payload.user?.firstName ||
+              String(displayName).trim().split(/\s+/)[0] ||
+              "Someone",
+            name: displayName,
             expiresAt: Date.now() + 3500,
           };
         } else {
@@ -1470,7 +1485,9 @@ function Chat({
   const typingLabel = useMemo(() => {
     const activeTypingUsers = Object.values(typingUsers);
     if (!activeTypingUsers.length) return "";
-    const firstName = String(activeTypingUsers[0]?.name || "Someone").split(/\s+/)[0];
+    const firstName =
+      activeTypingUsers[0]?.firstName ||
+      String(activeTypingUsers[0]?.name || "Someone").split(/\s+/)[0];
     if (!isGroupChat) return `${firstName} is typing...`;
     return activeTypingUsers.length === 1
       ? `${firstName} is typing...`
@@ -1616,6 +1633,16 @@ function Chat({
         },
         { withCredentials: true }
       )
+      .then((response) => {
+        (response.data?.updates || []).forEach((update) => {
+          updateMessageStatus(update.messageId, {
+            status: update.status,
+            seenAt: update.seenAt,
+            deliveredAt: update.seenAt,
+          });
+        });
+        setUnreadCount(resolvedConversationKey, 0);
+      })
       .catch((error) => console.error("Error marking messages seen:", error));
 
     return () => {
@@ -3343,6 +3370,15 @@ function Chat({
   };
 
   const renderStatusTick = (message) => {
+    const effectiveStatus =
+      message.status === "seen" ||
+      message.seenAt ||
+      (Array.isArray(message.readBy) && message.readBy.length > 0)
+        ? "seen"
+        : message.status === "delivered" || message.deliveredAt
+          ? "delivered"
+          : message.status;
+
     if (message.uploadStatus === "uploading") {
       return (
         <span className="text-[10px] text-cyan-300">
@@ -3385,18 +3421,18 @@ function Chat({
       return null;
     }
 
-    if (message.status === "seen") {
+    if (effectiveStatus === "seen") {
       return (
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center gap-1 text-cyan-200">
           <Tick color="#67e8f9" read />
           <span>Seen</span>
         </span>
       );
     }
 
-    if (message.status === "delivered") {
+    if (effectiveStatus === "delivered") {
       return (
-        <span className="inline-flex items-center gap-1">
+        <span className="inline-flex items-center gap-1 text-slate-300">
           <Tick color="#94a3b8" read />
           <span>Delivered</span>
         </span>
@@ -3404,9 +3440,9 @@ function Chat({
     }
 
     return (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1 text-slate-400">
         <Tick color="#64748b" read />
-        <span>{message.status === "sending" ? "Sending" : "Sent"}</span>
+        <span>{effectiveStatus === "sending" ? "Sending" : "Sent"}</span>
       </span>
     );
   };
