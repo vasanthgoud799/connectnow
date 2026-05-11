@@ -1,11 +1,20 @@
 import { useEffect } from "react";
 
+const isEditableElement = (element) =>
+  element instanceof HTMLElement &&
+  ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName);
+
 const setViewportVars = () => {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
   }
 
   const visualViewport = window.visualViewport;
+  const activeElement = document.activeElement;
+  const isKeyboardLikelyOpen =
+    isEditableElement(activeElement) && visualViewport
+      ? visualViewport.height < window.innerHeight - 80
+      : false;
   const rawViewportHeight = Math.max(
     240,
     Math.round(visualViewport?.height || window.innerHeight || 0)
@@ -16,11 +25,11 @@ const setViewportVars = () => {
   );
   const viewportOffsetTop = Math.max(
     0,
-    Math.round(visualViewport?.offsetTop || 0)
+    Math.round(isKeyboardLikelyOpen ? visualViewport?.offsetTop || 0 : 0)
   );
   const viewportOffsetLeft = Math.max(
     0,
-    Math.round(visualViewport?.offsetLeft || 0)
+    Math.round(isKeyboardLikelyOpen ? visualViewport?.offsetLeft || 0 : 0)
   );
   const layoutHeight = Math.max(
     240,
@@ -30,7 +39,9 @@ const setViewportVars = () => {
     240,
     Math.min(layoutHeight, rawViewportHeight + viewportOffsetTop)
   );
-  const keyboardOffset = Math.max(0, layoutHeight - visibleBottom);
+  const keyboardOffset = isKeyboardLikelyOpen
+    ? Math.max(0, layoutHeight - visibleBottom)
+    : 0;
 
   document.documentElement.style.setProperty(
     "--app-viewport-height",
@@ -74,7 +85,7 @@ export function useVisualViewportHeight() {
     };
     const updateDuringViewportAnimation = () => {
       update();
-      [60, 160, 320, 520].forEach((delay) => {
+      [60, 160, 320, 520, 800, 1200].forEach((delay) => {
         const timeoutId = window.setTimeout(() => {
           timeoutIds.delete(timeoutId);
           update();
@@ -90,6 +101,8 @@ export function useVisualViewportHeight() {
     window.addEventListener("orientationchange", updateDuringViewportAnimation);
     window.addEventListener("focusin", updateDuringViewportAnimation);
     window.addEventListener("focusout", updateDuringViewportAnimation);
+    window.addEventListener("blur", updateDuringViewportAnimation);
+    window.addEventListener("pageshow", updateDuringViewportAnimation);
     visualViewport?.addEventListener("resize", updateDuringViewportAnimation);
     visualViewport?.addEventListener("scroll", updateDuringViewportAnimation);
 
@@ -104,6 +117,8 @@ export function useVisualViewportHeight() {
       window.removeEventListener("orientationchange", updateDuringViewportAnimation);
       window.removeEventListener("focusin", updateDuringViewportAnimation);
       window.removeEventListener("focusout", updateDuringViewportAnimation);
+      window.removeEventListener("blur", updateDuringViewportAnimation);
+      window.removeEventListener("pageshow", updateDuringViewportAnimation);
       visualViewport?.removeEventListener("resize", updateDuringViewportAnimation);
       visualViewport?.removeEventListener("scroll", updateDuringViewportAnimation);
     };

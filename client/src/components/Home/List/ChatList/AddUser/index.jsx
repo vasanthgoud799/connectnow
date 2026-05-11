@@ -136,7 +136,7 @@ function AddUser({ onFriendAdded, onClose }) {
               searchedContacts.map((contact) => (
                 <div
                   key={contact._id}
-                  className="themed-page-card grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-[24px] p-4"
+                  className="themed-page-card grid grid-cols-1 items-center gap-4 rounded-[24px] p-4 sm:grid-cols-[minmax(0,1fr)_auto]"
                 >
                   <div className="flex min-w-0 items-center gap-4">
                     <img
@@ -156,21 +156,21 @@ function AddUser({ onFriendAdded, onClose }) {
                   {contact.relationStatus === "friends" ? (
                     <Button
                       disabled
-                      className="h-11 min-w-[132px] rounded-2xl bg-emerald-500/15 px-5 text-emerald-200 hover:bg-emerald-500/15"
+                      className="h-11 w-full rounded-2xl bg-emerald-500/15 px-5 text-emerald-200 hover:bg-emerald-500/15 sm:min-w-[132px]"
                     >
                       Friends
                     </Button>
                   ) : contact.relationStatus === "requested" ? (
                     <Button
                       disabled
-                      className="h-11 min-w-[132px] rounded-2xl bg-slate-200 px-5 text-slate-600 hover:bg-slate-200"
+                      className="h-11 w-full rounded-2xl bg-slate-200 px-5 text-slate-600 hover:bg-slate-200 sm:min-w-[132px]"
                     >
                       Requested
                     </Button>
                   ) : contact.relationStatus === "incoming_request" ? (
                     <Button
                       disabled
-                      className="h-11 min-w-[132px] rounded-2xl bg-amber-500/15 px-5 text-amber-200 hover:bg-amber-500/15"
+                      className="h-11 w-full rounded-2xl bg-amber-500/15 px-5 text-amber-200 hover:bg-amber-500/15 sm:min-w-[132px]"
                     >
                       Check requests
                     </Button>
@@ -178,7 +178,7 @@ function AddUser({ onFriendAdded, onClose }) {
                     <Button
                       onClick={() => sendFriendRequest(contact._id)}
                       disabled={loading}
-                      className="h-11 min-w-[152px] rounded-2xl bg-white px-5 text-slate-950 hover:bg-slate-100"
+                      className="h-11 w-full rounded-2xl bg-white px-5 text-slate-950 hover:bg-slate-100 sm:min-w-[152px]"
                     >
                       <UserPlus className="mr-2 h-4 w-4" />
                       Add Friend

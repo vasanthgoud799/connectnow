@@ -35,6 +35,7 @@ import {
 } from "@/utils/constants";
 import { registerNewUser } from "@/utils/wssConnection/wssConnection";
 import { useSocket } from "@/context/SocketContext";
+import useHandleReceiveMessage from "@/context/useHandleReceiveMessage";
 import { useResponsiveLayout } from "@/hooks/useResponsiveLayout";
 import { useVisualViewportHeight } from "@/hooks/useVisualViewportHeight";
 import { useAppShellLock } from "@/hooks/useAppShellLock";
@@ -78,6 +79,7 @@ function Home({ activeUsers = [], callState }) {
   const { isMobile } = useResponsiveLayout();
   useVisualViewportHeight();
   useAppShellLock();
+  useHandleReceiveMessage(socket);
 
   const [isDetailVisible, setIsDetailVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);

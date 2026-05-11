@@ -390,6 +390,8 @@ export const createChatSlice = (set, get) => ({
       messagesLoadedByConversationKey,
       chatSummaries,
       userInfo,
+      activeHomeSection,
+      mobileChatView,
       setUnreadCount,
     } = get();
 
@@ -406,14 +408,21 @@ export const createChatSlice = (set, get) => ({
         : normalizedMessage.sender?._id || normalizedMessage.sender?.id;
     const messageId = getMessageId(normalizedMessage);
     const conversationKey = getMessageConversationKey(normalizedMessage);
-    const isActiveConversation = selectedConversationKey === conversationKey;
+    const isSelectedConversation = selectedConversationKey === conversationKey;
+    const isMobileLayout =
+      typeof window !== "undefined" &&
+      (window.matchMedia?.("(max-width: 768px)")?.matches || window.innerWidth <= 768);
+    const isActiveConversation =
+      isSelectedConversation &&
+      activeHomeSection === "chats" &&
+      (!isMobileLayout || mobileChatView === "chat");
 
     set((state) => ({
-      selectedChatMessages: isActiveConversation
+      selectedChatMessages: isSelectedConversation
         ? mergeMessages(state.selectedChatMessages, normalizedMessage)
         : state.selectedChatMessages,
       messagesByConversationKey:
-        isActiveConversation || state.messagesLoadedByConversationKey?.[conversationKey]
+        isSelectedConversation || state.messagesLoadedByConversationKey?.[conversationKey]
           ? {
               ...state.messagesByConversationKey,
               [conversationKey]: mergeMessages(
@@ -425,7 +434,7 @@ export const createChatSlice = (set, get) => ({
             }
           : state.messagesByConversationKey,
       messagesLoadedByConversationKey:
-        isActiveConversation || state.messagesLoadedByConversationKey?.[conversationKey]
+        isSelectedConversation || state.messagesLoadedByConversationKey?.[conversationKey]
           ? {
               ...state.messagesLoadedByConversationKey,
               [conversationKey]: true,
@@ -492,7 +501,7 @@ export const createChatSlice = (set, get) => ({
           timestamp: normalizedMessage.timestamp,
           status: normalizedMessage.status,
         },
-        unreadCount: recipientId === userInfo?.id ? 1 : 0,
+        unreadCount: senderId !== userInfo?.id ? 1 : 0,
         updatedAt: normalizedMessage.timestamp,
       });
     }

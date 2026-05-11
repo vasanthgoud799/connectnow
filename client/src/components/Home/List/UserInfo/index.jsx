@@ -17,6 +17,8 @@ function UserInfo({
   const { userInfo } = useAppStore();
   const navigate = useNavigate();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const activeUserCount = Array.isArray(activeUsers) ? activeUsers.length : 0;
+  const visibleActiveUsers = Array.isArray(activeUsers) ? activeUsers.slice(0, 24) : [];
 
   return (
     <>
@@ -78,9 +80,44 @@ function UserInfo({
           <div className="themed-stat-chip inline-flex shrink-0 min-w-0 items-center justify-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             <span className="truncate">Online Contacts:</span>
-            <span className="themed-title font-semibold">{activeUsers.length}</span>
+            <span className="themed-title font-semibold">{activeUserCount}</span>
           </div>
         </div>
+
+        {visibleActiveUsers.length > 0 && (
+          <div className="scrollbar-hide -mx-1 flex max-w-full touch-pan-x gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1 md:hidden">
+            {visibleActiveUsers.map((activeUser) => {
+              const displayName =
+                activeUser.firstName ||
+                activeUser.displayName ||
+                activeUser.username ||
+                activeUser.email ||
+                "Online";
+              const activeUserId =
+                activeUser.userId ||
+                activeUser.id ||
+                activeUser._id ||
+                activeUser.socketId ||
+                displayName;
+
+              return (
+                <div
+                  key={String(activeUserId)}
+                  className="themed-panel-soft flex max-w-[9rem] shrink-0 items-center gap-2 rounded-full px-2.5 py-1.5"
+                >
+                  <img
+                    src={activeUser.image || activeUser.avatar || "/avatar.png"}
+                    alt={displayName}
+                    className="h-6 w-6 shrink-0 rounded-full object-cover"
+                  />
+                  <span className="themed-title min-w-0 truncate text-xs">
+                    {String(displayName).split(/\s+/)[0]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </header>
     {isProfileMenuOpen &&

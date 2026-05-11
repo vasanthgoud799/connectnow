@@ -42,6 +42,7 @@ export const listMySessions = async (req, res) => {
   const sessions = await AuthSession.find({
     userId: req.userId,
     expiresAt: { $gt: new Date() },
+    revokedAt: null,
   })
     .select(SESSION_SELECT)
     .sort({ lastSeenAt: -1 })

@@ -33,6 +33,17 @@ const normalizeUserProfilePayload = (user) => {
   };
 };
 
+const PROFILE_IMAGE_MAX_BYTES = 12 * 1024 * 1024;
+const SUPPORTED_PROFILE_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+]);
+
 async function compressProfileImageIfNeeded(file) {
   if (!file || !String(file.type || "").startsWith("image/")) {
     return file;
@@ -195,6 +206,19 @@ function Profile() {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      const fileType = String(file.type || "").toLowerCase();
+      if (fileType && !SUPPORTED_PROFILE_IMAGE_TYPES.has(fileType)) {
+        toast.error("Choose a JPEG, PNG, WebP, GIF, HEIC, or HEIF image.");
+        e.target.value = "";
+        return;
+      }
+
+      if (file.size > PROFILE_IMAGE_MAX_BYTES) {
+        toast.error("Profile photos must be 12MB or smaller.");
+        e.target.value = "";
+        return;
+      }
+
       if (imagePreviewUrlRef.current) {
         URL.revokeObjectURL(imagePreviewUrlRef.current);
       }
@@ -356,12 +380,12 @@ function Profile() {
 
   return (
     <div
-      className="themed-shell flex h-[var(--app-viewport-height,100dvh)] max-h-[var(--app-viewport-height,100dvh)] min-h-0 items-start justify-center overflow-x-hidden overflow-y-auto overscroll-contain px-4 py-6 md:items-center md:py-8"
+      className="themed-shell flex h-[var(--app-viewport-height,100dvh)] max-h-[var(--app-viewport-height,100dvh)] min-h-0 items-start justify-center overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:items-center md:py-8"
       data-app-shell-lock-root
     >
-      <div className="themed-panel w-full max-w-6xl rounded-[36px] shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
+      <div className="themed-panel min-w-0 w-full max-w-6xl overflow-hidden rounded-[36px] shadow-[0_30px_90px_rgba(2,8,23,0.18)] backdrop-blur-xl">
         <div className="grid lg:grid-cols-[0.9fr_1.1fr] ">
-          <div className="border-b border-white/10 p-8 lg:border-b-0 lg:border-r lg:p-10 ">
+          <div className="min-w-0 border-b border-white/10 p-6 lg:border-b-0 lg:border-r lg:p-10 ">
             <div className="flex items-center justify-between">
               <button
                 type="button"
@@ -429,8 +453,8 @@ function Profile() {
             </div>
           </div>
 
-          <div className="p-8 lg:p-10">
-            <div className="mx-auto max-w-xl">
+          <div className="min-w-0 p-6 lg:p-10">
+            <div className="mx-auto min-w-0 max-w-xl">
               <h2 className="themed-title font-['Space_Grotesk'] text-3xl font-semibold">
                 Edit profile
               </h2>
@@ -467,7 +491,7 @@ function Profile() {
                   type="date"
                   value={birthday}
                   onChange={(e) => setBirthday(e.target.value)}
-                  className="themed-input h-14 rounded-2xl px-5"
+                  className="themed-input h-14 min-w-0 max-w-full rounded-2xl px-5 text-ellipsis [color-scheme:dark]"
                 />
               </div>
 
@@ -480,21 +504,21 @@ function Profile() {
                 />
               </div>
 
-              <div className="themed-page-card mt-8 rounded-[28px] p-5" data-testid="profile-security-fingerprint-card">
+              <div className="themed-page-card mt-8 min-w-0 overflow-hidden rounded-[28px] p-5" data-testid="profile-security-fingerprint-card">
                 <p className="themed-title text-sm font-medium">Privacy labels</p>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <div className="themed-panel-soft themed-subtitle rounded-2xl px-4 py-3 text-sm">
+                  <div className="themed-panel-soft themed-subtitle min-w-0 rounded-2xl px-4 py-3 text-sm">
                     End-to-end identity flow
                   </div>
-                  <div className="themed-panel-soft themed-subtitle rounded-2xl px-4 py-3 text-sm">
+                  <div className="themed-panel-soft themed-subtitle min-w-0 rounded-2xl px-4 py-3 text-sm">
                     Device-aware account session
                   </div>
                 </div>
               </div>
 
-              <div className="themed-page-card mt-8 rounded-[28px] p-5">
+              <div className="themed-page-card mt-8 min-w-0 overflow-hidden rounded-[28px] p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="themed-title text-sm font-medium">Security fingerprint</p>
                     <p className="themed-subtitle mt-1 text-xs">
                       Compare this fingerprint with your trusted devices before verifying a contact.
@@ -521,7 +545,7 @@ function Profile() {
                 </div>
               </div>
 
-              <div className="themed-page-card mt-8 rounded-[28px] p-5">
+              <div className="themed-page-card mt-8 min-w-0 overflow-hidden rounded-[28px] p-5">
                 <div className="flex items-center gap-3">
                   <div className="themed-icon-chip">
                     <ShieldCheck className="h-5 w-5" />

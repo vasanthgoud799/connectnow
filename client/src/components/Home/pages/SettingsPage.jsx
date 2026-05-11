@@ -46,7 +46,7 @@ function SettingsPage() {
     securityEvents,
     adminDashboard,
     securitySnapshotLoading,
-    setSessions,
+    securitySnapshotError,
     fetchSecuritySnapshot,
     browserNotificationsEnabled,
     setBrowserNotificationsEnabled,
@@ -59,6 +59,7 @@ function SettingsPage() {
   const [notificationPermission, setNotificationPermission] = useState(
     getBrowserNotificationPermission()
   );
+  const [sessionActionId, setSessionActionId] = useState("");
   const browserNotificationsSupported = isBrowserNotificationSupported();
 
   const subscription = userInfo?.subscription || { plan: "free", expiresAt: null };
@@ -73,6 +74,14 @@ function SettingsPage() {
     if (!subscription.expiresAt) return "Premium active";
     return `Premium until ${new Date(subscription.expiresAt).toLocaleDateString()}`;
   }, [isPremiumUser, subscription.expiresAt]);
+  const activeSessions = useMemo(
+    () => (sessions || []).filter((session) => !session.revokedAt),
+    [sessions]
+  );
+  const revocableSessions = useMemo(
+    () => activeSessions.filter((session) => !session.current),
+    [activeSessions]
+  );
 
   useEffect(() => {
     setAiEnabled(Boolean(userInfo?.aiPreferences?.enabled));
@@ -112,34 +121,49 @@ function SettingsPage() {
   };
 
   const revokeSession = async (sessionId) => {
+    const targetSession = activeSessions.find((session) => session.id === sessionId);
+    if (targetSession?.current) {
+      toast.error("Use Logout to end this device's current session.");
+      return;
+    }
+
     try {
+      setSessionActionId(sessionId);
       await apiClient.delete(`${SECURITY_SESSIONS_ROUTE}/${sessionId}`, {
         withCredentials: true,
       });
-      setSessions((items) =>
-        items.map((item) =>
-          item.id === sessionId ? { ...item, revokedAt: new Date().toISOString() } : item
-        )
-      );
+      await fetchSecuritySnapshot({
+        force: true,
+        isAdmin: userInfo?.role === "admin",
+      });
       toast.success("Session revoked.");
     } catch (error) {
       console.error("Error revoking session:", error);
       toast.error("Unable to revoke session.");
+    } finally {
+      setSessionActionId("");
     }
   };
 
   const revokeOtherSessions = async () => {
+    if (!revocableSessions.length) {
+      toast("No other active sessions to revoke.");
+      return;
+    }
+
     try {
+      setSessionActionId("revoke-others");
       await apiClient.post(SECURITY_REVOKE_OTHERS_ROUTE, {}, { withCredentials: true });
-      setSessions((items) =>
-        items.map((item) =>
-          item.current ? item : { ...item, revokedAt: new Date().toISOString() }
-        )
-      );
+      await fetchSecuritySnapshot({
+        force: true,
+        isAdmin: userInfo?.role === "admin",
+      });
       toast.success("Other sessions revoked.");
     } catch (error) {
       console.error("Error revoking other sessions:", error);
       toast.error("Unable to revoke other sessions.");
+    } finally {
+      setSessionActionId("");
     }
   };
 
@@ -321,16 +345,17 @@ function SettingsPage() {
               <div>
                 <p className="themed-title font-medium">Active sessions</p>
                 <p className="themed-subtitle mt-1 text-sm">
-                  {sessions.filter((session) => !session.revokedAt).length || 0} signed-in devices
+                  {activeSessions.length || 0} signed-in devices
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={revokeOtherSessions}
-              className="rounded-full bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/25"
+              disabled={!revocableSessions.length || Boolean(sessionActionId)}
+              className="rounded-full bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Sign out others
+              {sessionActionId === "revoke-others" ? "Signing out..." : "Sign out others"}
             </button>
           </div>
 
@@ -342,27 +367,36 @@ function SettingsPage() {
                 className="rounded-[20px] bg-transparent px-0 py-2 text-left"
                 center={false}
               />
-            ) : sessions.length ? (
-              sessions.map((session) => (
+            ) : securitySnapshotError ? (
+              <StatePanel
+                title="Unable to load sessions"
+                description={securitySnapshotError}
+                dashed
+                className="rounded-[20px] bg-transparent px-0 py-2 text-left"
+                center={false}
+              />
+            ) : activeSessions.length ? (
+              activeSessions.map((session) => (
               <div
                 key={session.id}
                 className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 md:flex-row md:items-center md:justify-between"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="themed-title text-sm font-medium">
                     {session.current ? "This device" : session.deviceLabel || "Unknown device"}
                   </p>
-                  <p className="themed-subtitle mt-1 text-xs">
+                  <p className="themed-subtitle mt-1 break-words text-xs">
                     Last active {session.lastSeenAt ? new Date(session.lastSeenAt).toLocaleString() : "recently"}
                   </p>
                 </div>
-                {!session.current && !session.revokedAt && (
+                {!session.current && (
                   <button
                     type="button"
                     onClick={() => revokeSession(session.id)}
-                    className="rounded-full bg-white/10 px-3 py-2 text-xs themed-title transition hover:bg-white/15"
+                    disabled={sessionActionId === session.id}
+                    className="rounded-full bg-white/10 px-3 py-2 text-xs themed-title transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Revoke
+                    {sessionActionId === session.id ? "Revoking..." : "Revoke"}
                   </button>
                 )}
               </div>

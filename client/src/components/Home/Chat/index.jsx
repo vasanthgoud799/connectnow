@@ -45,7 +45,6 @@ import EmptyChatState from "./EmptyChatState";
 import Tick from "../List/ChatList/Tick";
 import { useAppStore } from "@/store";
 import { useSocket } from "@/context/SocketContext";
-import useHandleReceiveMessage from "@/context/useHandleReceiveMessage";
 import { apiClient } from "@/lib/api-client.js";
 import { toast } from "sonner";
 import {
@@ -1092,8 +1091,6 @@ function Chat({
   const typingActiveRef = useRef(false);
   const lastTypingEmitRef = useRef(0);
   const lastSendFingerprintRef = useRef({ value: "", timestamp: 0 });
-
-  useHandleReceiveMessage(socket);
 
   useEffect(() => {
     if (!resolvedConversationKey) return;

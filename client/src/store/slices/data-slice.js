@@ -35,6 +35,7 @@ export const createDataSlice = (set, get) => ({
   adminDashboard: null,
   securitySnapshotLoaded: false,
   securitySnapshotLoading: false,
+  securitySnapshotError: "",
   activeHomeSection: "chats",
   mobileChatView: "chat",
 
@@ -47,7 +48,11 @@ export const createDataSlice = (set, get) => ({
   invalidateCalls: () =>
     set({ callsLoaded: false, callsLoading: false }),
   invalidateSecuritySnapshot: () =>
-    set({ securitySnapshotLoaded: false, securitySnapshotLoading: false }),
+    set({
+      securitySnapshotLoaded: false,
+      securitySnapshotLoading: false,
+      securitySnapshotError: "",
+    }),
   setActiveHomeSection: (activeHomeSection) => set({ activeHomeSection }),
   setMobileChatView: (mobileChatView) => set({ mobileChatView }),
   setSessions: (updater) =>
@@ -232,7 +237,7 @@ export const createDataSlice = (set, get) => ({
       return securitySnapshotPromise;
     }
 
-    set({ securitySnapshotLoading: true });
+    set({ securitySnapshotLoading: true, securitySnapshotError: "" });
     securitySnapshotPromise = (async () => {
       try {
         const [sessionResponse, eventsResponse, trustedDevicesResponse] = await Promise.all([
@@ -261,6 +266,7 @@ export const createDataSlice = (set, get) => ({
           ...snapshot,
           securitySnapshotLoaded: true,
           securitySnapshotLoading: false,
+          securitySnapshotError: "",
         });
 
         return snapshot;
@@ -276,6 +282,8 @@ export const createDataSlice = (set, get) => ({
           ...emptySnapshot,
           securitySnapshotLoaded: true,
           securitySnapshotLoading: false,
+          securitySnapshotError:
+            error?.response?.data?.message || "Unable to load active sessions.",
         });
         return emptySnapshot;
       } finally {

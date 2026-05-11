@@ -5,10 +5,11 @@ import { useAppStore } from "./store";
 import {
   apiClient,
   clearPersistedAppSession,
+  getStoredAppSessionToken,
   persistAppSession,
   registerAppSessionRefreshHandler,
 } from "./lib/api-client";
-import { CLERK_SYNC_ROUTE } from "./utils/constants";
+import { CLERK_SYNC_ROUTE, GET_USER_INFO } from "./utils/constants";
 import PWAInstallPrompt from "./components/PWAInstallPrompt";
 import RouteLoader from "./components/ui/RouteLoader";
 
@@ -49,6 +50,7 @@ function App() {
   const hasSyncedRef = useRef(false);
   const syncInFlightRef = useRef(false);
   const syncPromiseRef = useRef(null);
+  const hydratedFromStoredSessionRef = useRef(false);
   const retryTimeoutRef = useRef(null);
   const retryCountRef = useRef(0);
 
@@ -66,7 +68,11 @@ function App() {
       }
     };
 
-    const syncClerkUser = ({ isRetry = false, skipLoadingState = false } = {}) => {
+    const syncClerkUser = ({
+      isRetry = false,
+      skipLoadingState = false,
+      preserveSessionOnFailure = false,
+    } = {}) => {
       if (syncPromiseRef.current) {
         return syncPromiseRef.current;
       }
@@ -149,14 +155,16 @@ function App() {
               `Clerk sync rate-limited. Retrying once in ${retryAfterSeconds} seconds.`
             );
             retryTimeoutRef.current = setTimeout(() => {
-              syncClerkUser({ isRetry: true });
+              syncClerkUser({ isRetry: true }).catch(() => {});
             }, retryAfterSeconds * 1000);
           } else {
             if (isRetry) {
               console.error("Clerk sync retry failed. No further retries will be attempted.");
             }
-            clearPersistedAppSession();
-            setUserInfo(undefined);
+            if (!preserveSessionOnFailure) {
+              clearPersistedAppSession();
+              setUserInfo(undefined);
+            }
           }
 
           throw error;
@@ -185,6 +193,7 @@ function App() {
     if (!isSignedIn) {
       clearRetryTimeout();
       hasSyncedRef.current = false;
+      hydratedFromStoredSessionRef.current = false;
       syncInFlightRef.current = false;
       retryCountRef.current = 0;
       clearPersistedAppSession();
@@ -197,13 +206,45 @@ function App() {
       return;
     }
 
+    if (
+      !hydratedFromStoredSessionRef.current &&
+      !hasSyncedRef.current &&
+      getStoredAppSessionToken()
+    ) {
+      hydratedFromStoredSessionRef.current = true;
+      apiClient
+        .get(GET_USER_INFO, { withCredentials: true })
+        .then((response) => {
+          if (!response.data?.id) {
+            throw new Error("Stored app session did not return a user.");
+          }
+
+          setUserInfo(response.data);
+          hasSyncedRef.current = true;
+          setLoading(false);
+          syncClerkUser({
+            skipLoadingState: true,
+            preserveSessionOnFailure: true,
+          }).catch((error) => {
+            console.warn("Background Clerk sync failed after cached session hydration:", error);
+          });
+        })
+        .catch(() => {
+          syncClerkUser().catch(() => {});
+        });
+      return () => {
+        clearRetryTimeout();
+        registerAppSessionRefreshHandler(null);
+      };
+    }
+
     if (hasSyncedRef.current) {
       console.info("Skipping duplicate Clerk sync because the current Clerk user is already synced.");
       setLoading(false);
       return;
     }
 
-      syncClerkUser();
+    syncClerkUser().catch(() => {});
 
     return () => {
       clearRetryTimeout();
