@@ -1,10 +1,12 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Gift, Search, UserPlus } from "lucide-react";
 
 import RouteLoader from "@/components/ui/RouteLoader";
 import PageScaffold from "@/components/ui/PageScaffold";
 import StatePanel from "@/components/ui/StatePanel";
 import { useAppStore } from "@/store";
+import { blurActiveTextInputOnMobile } from "@/hooks/useMobileFocusGuard";
 
 const AddUser = lazy(() => import("../List/ChatList/AddUser"));
 
@@ -45,11 +47,16 @@ function ContactsPage({ onOpenChat }) {
   );
   const loadingPlaceholders = Array.from({ length: 6 }, (_, index) => index);
 
+  const openAddUser = () => {
+    blurActiveTextInputOnMobile();
+    setShowAddUser(true);
+  };
+
   return (
     <>
       <PageScaffold
         className="bg-transparent"
-        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-3"
         footerClassName="hidden"
       >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -66,7 +73,7 @@ function ContactsPage({ onOpenChat }) {
         <button
           type="button"
           className="themed-panel-soft flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm transition hover:opacity-90 sm:min-w-[152px]"
-          onClick={() => setShowAddUser(true)}
+          onClick={openAddUser}
         >
           <UserPlus className="h-4 w-4" />
           Add contact
@@ -166,8 +173,9 @@ function ContactsPage({ onOpenChat }) {
         </div>
       </PageScaffold>
 
-      {showAddUser && (
-        <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
+      {showAddUser &&
+        createPortal(
+          <Suspense fallback={<RouteLoader message="Loading contacts..." />}>
             <AddUser
               onFriendAdded={() => {
                 invalidateContacts();
@@ -178,8 +186,9 @@ function ContactsPage({ onOpenChat }) {
               }}
               onClose={() => setShowAddUser(false)}
             />
-        </Suspense>
-      )}
+          </Suspense>,
+          document.body
+        )}
     </>
   );
 }

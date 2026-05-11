@@ -1003,7 +1003,7 @@ function Home({ activeUsers = [], callState }) {
               </div>
 
               <div
-                className={`themed-bottom-nav grid h-[68px] grid-cols-5 md:hidden ${
+                className={`themed-bottom-nav grid min-h-16 shrink-0 grid-cols-5 px-1 py-1 md:hidden ${
                   activeSection === "chats" && mobileChatView === "chat" ? "hidden" : ""
                 }`}
               >
@@ -1017,7 +1017,7 @@ function Home({ activeUsers = [], callState }) {
                         setIsDetailVisible(false);
                         setIsSearchVisible(false);
                       }}
-                      className={`flex flex-col items-center justify-center gap-1 text-xs ${
+                      className={`flex min-w-0 flex-col items-center justify-center gap-1 text-xs ${
                         activeSection === id ? "text-cyan-200" : "text-slate-500"
                       }`}
                     >

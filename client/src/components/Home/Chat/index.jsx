@@ -780,7 +780,7 @@ function GroupCallPickerModal({
 
   return (
     <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[var(--app-viewport-height,100dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,720px)] md:rounded-[30px] md:p-6">
+      <div className="themed-modal-surface flex h-full max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-none p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(86vh,720px)] md:rounded-[30px] md:p-6">
         <div className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <p className="themed-title text-xl font-semibold">{title}</p>

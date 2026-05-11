@@ -32,6 +32,10 @@ const getImageContentType = (filePath = "") => {
   return "image/jpeg";
 };
 
+const setEmbeddableMediaHeaders = (res) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+};
+
 const streamLocalEntityImage = ({ req, res, storagePath, image }) => {
   const candidatePath = storagePath || image;
   if (!candidatePath || /^https?:\/\//i.test(String(candidatePath))) {
@@ -48,6 +52,7 @@ const streamLocalEntityImage = ({ req, res, storagePath, image }) => {
     return false;
   }
 
+  setEmbeddableMediaHeaders(res);
   res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
   res.setHeader("Content-Type", getImageContentType(absolutePath));
   createReadStream(absolutePath).pipe(res);
@@ -65,6 +70,8 @@ const redirectToEntityImage = async ({
   if (!image && !storagePath) {
     return res.status(404).json({ message: "Media not found." });
   }
+
+  setEmbeddableMediaHeaders(res);
 
   if (storageProvider === "supabase" && storagePath) {
     try {
@@ -190,6 +197,7 @@ export const createUploadIntent = async (req, res) => {
 
 export const getMessageMedia = async (req, res) => {
   try {
+    setEmbeddableMediaHeaders(res);
     const token = String(req.query?.token || "");
     if (!token) {
       logRuntimeEvent("warn", "media.access.denied", {

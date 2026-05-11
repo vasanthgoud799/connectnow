@@ -254,7 +254,7 @@ function SettingsPage() {
   return (
     <>
       <PageScaffold
-        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))] pr-1"
+        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-3 pr-1"
       >
         <div className="grid gap-4 lg:grid-cols-2">
         <button

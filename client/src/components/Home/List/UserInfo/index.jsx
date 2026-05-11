@@ -18,7 +18,6 @@ function UserInfo({
   const navigate = useNavigate();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const activeUserCount = Array.isArray(activeUsers) ? activeUsers.length : 0;
-  const visibleActiveUsers = Array.isArray(activeUsers) ? activeUsers.slice(0, 24) : [];
 
   return (
     <>
@@ -44,22 +43,22 @@ function UserInfo({
           </div>
         </div>
 
-        <div className="scrollbar-hide -mx-1 flex gap-2 overflow-x-auto px-1 xl:justify-end">
+        <div className="scrollbar-hide -mx-1 flex max-w-full min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1 xl:justify-end">
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen(true)}
-            className="themed-stat-chip inline-flex shrink-0 items-center justify-center gap-2 md:hidden"
+            className="themed-stat-chip inline-flex flex-none items-center justify-center gap-2 whitespace-nowrap md:hidden"
           >
             <UserCircle2 className="h-4 w-4" />
             <span>Profile</span>
           </button>
-          <div className="shrink-0">
+          <div className="flex-none">
             <ThemeToggle />
           </div>
           <button
             type="button"
             onClick={onOpenGlobalSearch}
-            className="themed-stat-chip inline-flex shrink-0 min-w-0 items-center justify-center gap-2"
+            className="themed-stat-chip inline-flex min-w-0 flex-none items-center justify-center gap-2 whitespace-nowrap"
           >
             <Search className="h-4 w-4" />
             <span>Search</span>
@@ -67,7 +66,7 @@ function UserInfo({
           <button
             type="button"
             onClick={onOpenNotifications}
-            className="themed-stat-chip relative inline-flex shrink-0 min-w-0 items-center justify-center gap-2"
+            className="themed-stat-chip relative inline-flex min-w-0 flex-none items-center justify-center gap-2 whitespace-nowrap"
           >
             <Bell className="h-4 w-4" />
             <span className="truncate">Notifications</span>
@@ -77,47 +76,12 @@ function UserInfo({
               </span>
             )}
           </button>
-          <div className="themed-stat-chip inline-flex shrink-0 min-w-0 items-center justify-center gap-2">
+          <div className="themed-stat-chip inline-flex min-w-0 flex-none items-center justify-center gap-2 whitespace-nowrap">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
             <span className="truncate">Online Contacts:</span>
             <span className="themed-title font-semibold">{activeUserCount}</span>
           </div>
         </div>
-
-        {visibleActiveUsers.length > 0 && (
-          <div className="scrollbar-hide -mx-1 flex max-w-full touch-pan-x gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1 md:hidden">
-            {visibleActiveUsers.map((activeUser) => {
-              const displayName =
-                activeUser.firstName ||
-                activeUser.displayName ||
-                activeUser.username ||
-                activeUser.email ||
-                "Online";
-              const activeUserId =
-                activeUser.userId ||
-                activeUser.id ||
-                activeUser._id ||
-                activeUser.socketId ||
-                displayName;
-
-              return (
-                <div
-                  key={String(activeUserId)}
-                  className="themed-panel-soft flex max-w-[9rem] shrink-0 items-center gap-2 rounded-full px-2.5 py-1.5"
-                >
-                  <img
-                    src={activeUser.image || activeUser.avatar || "/avatar.png"}
-                    alt={displayName}
-                    className="h-6 w-6 shrink-0 rounded-full object-cover"
-                  />
-                  <span className="themed-title min-w-0 truncate text-xs">
-                    {String(displayName).split(/\s+/)[0]}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </header>
     {isProfileMenuOpen &&

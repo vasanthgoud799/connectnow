@@ -21,7 +21,9 @@ import {
 } from "@/utils/constants";
 import { useAppStore } from "@/store";
 import { isDirectCallBusy } from "@/store/actions/callActions";
-import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
+import useMobileFocusGuard, {
+  blurActiveTextInputOnMobile,
+} from "@/hooks/useMobileFocusGuard";
 
 function formatCallDate(value) {
   if (!value) return "";
@@ -109,7 +111,7 @@ function CallContactPicker({
 
   return createPortal(
     <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface flex h-[var(--app-viewport-height,100dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-t-[30px] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
+      <div className="themed-modal-surface flex h-full max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-none p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:h-auto md:max-h-[80vh] md:rounded-[30px] md:p-6">
         <div className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <p className="themed-title text-xl font-semibold">Start a call</p>
@@ -217,6 +219,7 @@ function CallsPage({ activeUsers = [], callState }) {
   }, [fetchCalls]);
 
   const openCallPicker = async () => {
+    blurActiveTextInputOnMobile();
     if (!contacts.length) {
       await fetchContacts();
     }
@@ -320,7 +323,7 @@ function CallsPage({ activeUsers = [], callState }) {
 
   return (
     <PageScaffold
-      bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+      bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-3"
     >
       <div className="mb-5 flex items-center gap-3">
         <div className="relative flex-1">

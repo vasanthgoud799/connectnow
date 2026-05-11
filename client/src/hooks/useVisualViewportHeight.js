@@ -11,18 +11,24 @@ const setViewportVars = () => {
 
   const visualViewport = window.visualViewport;
   const activeElement = document.activeElement;
+  const measuredVisualHeight = Math.round(
+    visualViewport?.height || window.innerHeight || 0
+  );
+  const measuredVisualWidth = Math.round(
+    visualViewport?.width || window.innerWidth || 0
+  );
+  const layoutHeight = Math.max(
+    240,
+    Math.round(window.innerHeight || measuredVisualHeight)
+  );
+  const layoutWidth = Math.max(
+    240,
+    Math.round(window.innerWidth || measuredVisualWidth)
+  );
   const isKeyboardLikelyOpen =
     isEditableElement(activeElement) && visualViewport
-      ? visualViewport.height < window.innerHeight - 80
+      ? measuredVisualHeight < layoutHeight - 80
       : false;
-  const rawViewportHeight = Math.max(
-    240,
-    Math.round(visualViewport?.height || window.innerHeight || 0)
-  );
-  const rawViewportWidth = Math.max(
-    240,
-    Math.round(visualViewport?.width || window.innerWidth || 0)
-  );
   const viewportOffsetTop = Math.max(
     0,
     Math.round(isKeyboardLikelyOpen ? visualViewport?.offsetTop || 0 : 0)
@@ -31,13 +37,17 @@ const setViewportVars = () => {
     0,
     Math.round(isKeyboardLikelyOpen ? visualViewport?.offsetLeft || 0 : 0)
   );
-  const layoutHeight = Math.max(
-    240,
-    Math.round(window.innerHeight || rawViewportHeight)
-  );
   const visibleBottom = Math.max(
     240,
-    Math.min(layoutHeight, rawViewportHeight + viewportOffsetTop)
+    Math.min(layoutHeight, measuredVisualHeight + viewportOffsetTop)
+  );
+  const rawViewportHeight = Math.max(
+    240,
+    isKeyboardLikelyOpen ? visibleBottom : layoutHeight
+  );
+  const rawViewportWidth = Math.max(
+    240,
+    isKeyboardLikelyOpen ? measuredVisualWidth : layoutWidth
   );
   const keyboardOffset = isKeyboardLikelyOpen
     ? Math.max(0, layoutHeight - visibleBottom)
@@ -85,7 +95,7 @@ export function useVisualViewportHeight() {
     };
     const updateDuringViewportAnimation = () => {
       update();
-      [60, 160, 320, 520, 800, 1200].forEach((delay) => {
+      [150, 350, 700, 1000].forEach((delay) => {
         const timeoutId = window.setTimeout(() => {
           timeoutIds.delete(timeoutId);
           update();

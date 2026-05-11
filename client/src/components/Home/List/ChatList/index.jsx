@@ -23,6 +23,7 @@ import {
   DELETE_CHAT_ROUTE,
 } from "@/utils/constants.js";
 import { useSocket } from "@/context/SocketContext";
+import { blurActiveTextInputOnMobile } from "@/hooks/useMobileFocusGuard";
 
 const AddUser = lazy(() => import("./AddUser"));
 const CreateGroup = lazy(() => import("./CreateGroup"));
@@ -86,6 +87,16 @@ function ChatList({ onOpenChat }) {
     [chatSummaries]
   );
 
+  const openAddUser = () => {
+    blurActiveTextInputOnMobile();
+    setShowAddUser(true);
+  };
+
+  const openCreateGroup = () => {
+    blurActiveTextInputOnMobile();
+    setShowCreateGroup(true);
+  };
+
   const savePreference = async (chat, updates) => {
     try {
       const payload = {
@@ -132,7 +143,7 @@ function ChatList({ onOpenChat }) {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-4 pb-24 pt-3 md:px-5 md:pb-5">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-3 md:px-5 md:pb-5">
      <div className="flex min-h-0 flex-1 flex-col">
         <div className="mb-4 md:mb-0">
         <div className="mb-4 flex items-center gap-2.5 md:mb-5 md:gap-3">
@@ -147,14 +158,14 @@ function ChatList({ onOpenChat }) {
           </div>
           <button
             type="button"
-            onClick={() => setShowAddUser(true)}
+            onClick={openAddUser}
             className="themed-panel-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-cyan-300 transition"
           >
             <Plus className="h-5 w-5" />
           </button>
           <button
             type="button"
-            onClick={() => setShowCreateGroup(true)}
+            onClick={openCreateGroup}
             className="themed-panel-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-pink-300 transition"
           >
             <UsersRound className="h-5 w-5" />

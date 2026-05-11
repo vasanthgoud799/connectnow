@@ -124,11 +124,11 @@ function CreateGroup({ onClose, onCreated }) {
   };
 
   return (
-    <div className="mobile-viewport-overlay z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
-      <div className="themed-modal-surface themed-chat-canvas animate-in fade-in zoom-in-95 duration-200 flex h-[var(--app-viewport-height,100dvh)] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[32px] backdrop-blur-xl shadow-[0_30px_80px_rgba(2,8,23,0.25)] md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
+    <div className="mobile-viewport-overlay z-50 flex items-stretch justify-center bg-slate-950/70 p-0 backdrop-blur-sm md:items-center md:p-4">
+      <div className="themed-modal-surface themed-chat-canvas animate-in fade-in zoom-in-95 flex h-full max-h-full w-full max-w-[1120px] flex-col overflow-hidden rounded-none bg-[#0b1726] shadow-[0_30px_80px_rgba(2,8,23,0.25)] duration-200 md:h-auto md:max-h-[min(92vh,900px)] md:rounded-[32px]">
         
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:px-6 md:pt-5">
           <div>
             <p className="themed-accent-text text-xs uppercase tracking-[0.28em]">
               New group
@@ -145,13 +145,13 @@ function CreateGroup({ onClose, onCreated }) {
           </button>
         </div>
 
-        <div className="mobile-safe-scroll grid flex-1 gap-5 p-4 md:p-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden">
+        <div className="mobile-safe-scroll flex-1 space-y-5 p-4 md:grid md:grid-cols-[340px_minmax(0,1fr)] md:gap-6 md:space-y-0 md:p-6 md:pb-4 md:overflow-hidden">
           
           {/* LEFT */}
-          <div className="min-h-0 space-y-4 pr-1 md:pr-2 lg:overflow-y-auto">
+          <div className="space-y-4 md:min-h-0 md:overflow-y-auto md:pr-2">
             
             {/* Avatar Upload */}
-            <div className="themed-page-card flex items-center gap-4 rounded-[24px] p-4">
+            <div className="themed-page-card flex items-start gap-4 rounded-[24px] p-4 sm:items-center">
               <label className="cursor-pointer">
                 <div className="themed-panel-soft flex h-20 w-20 items-center justify-center overflow-hidden rounded-[26px]">
                   {avatarPreview ? (
@@ -166,6 +166,7 @@ function CreateGroup({ onClose, onCreated }) {
                 </div>
                 <input
                   type="file"
+                  accept="image/*"
                   hidden
                   onChange={(e) => setAvatar(e.target.files[0])}
                 />
@@ -238,8 +239,8 @@ function CreateGroup({ onClose, onCreated }) {
           </div>
 
           {/* RIGHT */}
-          <div className="flex min-h-0 flex-col overflow-visible lg:overflow-hidden">
-            <div className="mb-3 flex items-start justify-between gap-4">
+          <div className="space-y-3 md:flex md:min-h-0 md:flex-col md:overflow-hidden">
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="themed-title text-base font-semibold">
                   Choose members
@@ -258,10 +259,10 @@ function CreateGroup({ onClose, onCreated }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search members..."
-              className="themed-input mb-3 h-12 rounded-2xl"
+              className="themed-input h-12 rounded-2xl"
             />
 
-            <div className="max-h-[50vh] min-h-0 space-y-3 overflow-y-auto pr-1 scroll-smooth md:pr-2 lg:flex-1">
+            <div className="min-h-[12rem] space-y-3 overflow-y-visible pr-1 scroll-smooth md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
               {filteredContacts.length === 0 && (
                 <p className="themed-subtitle mt-10 text-center">
                   No contacts found
@@ -316,20 +317,20 @@ function CreateGroup({ onClose, onCreated }) {
           </div>
         </div>
 
-        <div className="shrink-0 border-t border-white/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-6 md:pb-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <div className="shrink-0 border-t border-white/10 bg-[#0b1726]/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6 md:py-4 md:pb-4">
+          <div className="grid gap-3 sm:grid-cols-2 md:flex md:items-center md:justify-end">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              className="themed-action-neutral h-12 rounded-2xl px-5"
+              className="themed-action-neutral h-12 w-full rounded-2xl px-5 md:w-auto"
             >
               Close
             </Button>
             <Button
               onClick={handleCreate}
               disabled={!canCreate || loading}
-              className="h-12 rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] px-6 text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+              className="h-12 w-full rounded-2xl bg-gradient-to-r from-[#f97316] to-[#38bdf8] px-6 text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] md:w-auto"
             >
               {loading ? "Creating..." : "Create group"}
             </Button>
