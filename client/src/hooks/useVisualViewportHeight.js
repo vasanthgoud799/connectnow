@@ -4,6 +4,41 @@ const isEditableElement = (element) =>
   element instanceof HTMLElement &&
   ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName);
 
+const rectSummary = (selector) => {
+  const element = document.querySelector(selector);
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  return {
+    height: Math.round(rect.height),
+    top: Math.round(rect.top),
+    bottom: Math.round(rect.bottom),
+  };
+};
+
+const logDevelopmentLayoutSnapshot = ({
+  isKeyboardLikelyOpen,
+  measuredVisualHeight,
+  layoutHeight,
+}) => {
+  if (!import.meta.env?.DEV || typeof window === "undefined") return;
+
+  const stateKey = isKeyboardLikelyOpen ? "keyboard" : "normal";
+  window.__connectNowLayoutDebugStates ||= new Set();
+  if (window.__connectNowLayoutDebugStates.has(stateKey)) return;
+  window.__connectNowLayoutDebugStates.add(stateKey);
+
+  console.debug("[ConnectNow mobile layout]", {
+    state: stateKey,
+    visualViewportHeight: measuredVisualHeight,
+    windowInnerHeight: layoutHeight,
+    appShell: rectSummary(".mobile-app-shell"),
+    chatShell: rectSummary(".chat-shell"),
+    messageList: rectSummary(".chat-message-scroll"),
+    composer: rectSummary(".chat-composer-shell"),
+    bottomNav: rectSummary(".themed-bottom-nav"),
+  });
+};
+
 const setViewportVars = () => {
   if (typeof window === "undefined" || typeof document === "undefined") {
     return;
@@ -48,10 +83,18 @@ const setViewportVars = () => {
   const keyboardOffset = isKeyboardLikelyOpen
     ? Math.max(0, layoutHeight - (measuredVisualHeight + viewportOffsetTop))
     : 0;
+  const chatViewportHeight = isKeyboardLikelyOpen
+    ? Math.max(240, layoutHeight - keyboardOffset)
+    : layoutHeight;
 
+  document.documentElement.dataset.keyboardOpen = isKeyboardLikelyOpen ? "true" : "false";
   document.documentElement.style.setProperty(
     "--app-viewport-height",
     `${rawViewportHeight}px`
+  );
+  document.documentElement.style.setProperty(
+    "--app-chat-viewport-height",
+    `${chatViewportHeight}px`
   );
   document.documentElement.style.setProperty(
     "--app-layout-height",
@@ -73,6 +116,11 @@ const setViewportVars = () => {
     "--app-keyboard-offset",
     `${keyboardOffset}px`
   );
+  logDevelopmentLayoutSnapshot({
+    isKeyboardLikelyOpen,
+    measuredVisualHeight,
+    layoutHeight,
+  });
 };
 
 export function useVisualViewportHeight() {

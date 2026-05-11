@@ -32,6 +32,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --app-viewport-height: 100dvh;
+    --app-chat-viewport-height: 100dvh;
     --app-viewport-width: 100vw;
     --app-viewport-offset-top: 0px;
     --app-viewport-offset-left: 0px;
@@ -106,8 +107,8 @@
 
   body.app-shell-body {
     width: 100%;
-    height: var(--app-viewport-height, 100dvh);
-    max-height: var(--app-viewport-height, 100dvh);
+    height: 100%;
+    max-height: 100%;
     min-height: 0;
     overflow: hidden;
     overscroll-behavior: none;
@@ -115,15 +116,15 @@
   }
 
   body.app-shell-body #root {
-    height: var(--app-viewport-height, 100dvh);
-    max-height: var(--app-viewport-height, 100dvh);
+    height: 100%;
+    max-height: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
   html.app-shell-html {
-    height: var(--app-viewport-height, 100dvh);
-    max-height: var(--app-viewport-height, 100dvh);
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
   }
@@ -639,15 +640,12 @@
 
 .mobile-app-shell {
   position: fixed;
-  top: var(--app-viewport-offset-top, 0px);
-  right: auto;
-  bottom: auto;
-  left: var(--app-viewport-offset-left, 0px);
-  width: var(--app-viewport-width, 100vw);
-  max-width: var(--app-viewport-width, 100vw);
-  height: var(--app-viewport-height, 100dvh);
-  min-height: var(--app-viewport-height, 100dvh);
-  max-height: var(--app-viewport-height, 100dvh);
+  inset: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  max-height: 100dvh;
   overflow: hidden;
 }
 
@@ -655,10 +653,10 @@
   position: relative;
   display: flex;
   flex: 1 1 auto;
-  height: var(--app-viewport-height, 100dvh);
+  height: 100%;
   min-height: 0;
   min-width: 0;
-  max-height: var(--app-viewport-height, 100dvh);
+  max-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -676,6 +674,12 @@
   overflow: hidden;
   overscroll-behavior: none;
   touch-action: pan-y;
+}
+
+.mobile-chat-viewport {
+  align-self: stretch;
+  height: 100%;
+  max-height: 100%;
 }
 
 .mobile-safe-header {
@@ -715,9 +719,16 @@
 
 @media (max-width: 768px) {
   .chat-shell {
-    height: var(--app-viewport-height, 100dvh);
-    max-height: var(--app-viewport-height, 100dvh);
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
+  }
+
+  html[data-keyboard-open="true"] .mobile-chat-viewport {
+    align-self: flex-end;
+    height: var(--app-chat-viewport-height, var(--app-viewport-height, 100dvh));
+    max-height: var(--app-chat-viewport-height, var(--app-viewport-height, 100dvh));
+    margin-bottom: var(--app-keyboard-offset, 0px);
   }
 
   .chat-composer-shell {
@@ -740,6 +751,11 @@
 }
 
 .themed-bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 60;
   flex-shrink: 0;
   height: var(--mobile-nav-total-height);
   min-height: var(--mobile-nav-total-height);
@@ -747,6 +763,16 @@
   background: rgba(6, 10, 20, 0.95);
   color: #cbd5e1;
   padding: 0.25rem 0.25rem calc(env(safe-area-inset-bottom) + 0.25rem);
+}
+
+.mobile-bottom-nav-content {
+  padding-bottom: 0;
+}
+
+@media (max-width: 768px) {
+  .mobile-bottom-nav-content {
+    padding-bottom: var(--mobile-nav-total-height);
+  }
 }
 
 .chat-message-region {

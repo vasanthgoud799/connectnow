@@ -713,6 +713,7 @@ function Home({ activeUsers = [], callState }) {
     starred: "Starred",
     settings: "Settings",
   };
+  const isBottomNavVisible = isMobile && !(activeSection === "chats" && mobileChatView === "chat");
 
   return (
     <div
@@ -855,7 +856,11 @@ function Home({ activeUsers = [], callState }) {
                 />
               )}
 
-              <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div
+                className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${
+                  isBottomNavVisible ? "mobile-bottom-nav-content" : ""
+                }`}
+              >
                 {activeSection === "chats" ? (
                   isMobile ? (
                     <AnimatePresence mode="wait" initial={false}>
@@ -877,7 +882,7 @@ function Home({ activeUsers = [], callState }) {
                           animate={{ x: 0, opacity: 1 }}
                           exit={{ x: 48, opacity: 0 }}
                           transition={{ duration: 0.24 }}
-                          className="relative flex h-full min-h-0 w-full max-w-full flex-1 overflow-hidden"
+                          className="mobile-chat-viewport relative flex min-h-0 w-full max-w-full flex-1 overflow-hidden"
                         >
                         <div className="themed-main-panel themed-chat-canvas relative flex h-full min-h-0 flex-1 overflow-hidden">
                           <Suspense fallback={<RouteLoader message="Loading chat..." />}>
@@ -1004,7 +1009,7 @@ function Home({ activeUsers = [], callState }) {
 
               <div
                 className={`themed-bottom-nav grid shrink-0 grid-cols-5 md:hidden ${
-                  activeSection === "chats" && mobileChatView === "chat" ? "hidden" : ""
+                  isBottomNavVisible ? "" : "hidden"
                 }`}
               >
                 {[{ id: "chats", label: "Chats", icon: HomeIcon }, ...sidebarItems.slice(1)].map(
