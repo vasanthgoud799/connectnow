@@ -21,8 +21,8 @@ function UserInfo({
 
   return (
     <>
-    <header className="themed-topbar border-b px-4 py-3 pt-[max(0.9rem,env(safe-area-inset-top))] md:px-6 md:py-4">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+    <header className="themed-topbar max-w-full overflow-hidden border-b px-4 py-3 pt-[max(0.9rem,env(safe-area-inset-top))] md:px-6 md:py-4">
+      <div className="flex max-w-full min-w-0 flex-col gap-3 overflow-hidden xl:flex-row xl:items-center xl:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <img
             src={userInfo?.image || "/avatar.png"}
@@ -43,7 +43,7 @@ function UserInfo({
           </div>
         </div>
 
-        <div className="scrollbar-hide -mx-1 flex max-w-full min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1 xl:justify-end">
+        <div className="scrollbar-hide -mx-1 flex w-full max-w-full min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1 xl:w-auto xl:justify-end">
           <button
             type="button"
             onClick={() => setIsProfileMenuOpen(true)}

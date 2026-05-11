@@ -55,7 +55,7 @@ function StarredPage({ onOpenChat }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-4 md:px-6 md:pb-5">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-2 pt-4 md:px-6 md:pb-5">
       <div className="mb-4 flex items-center justify-end">
         <div className="themed-stat-chip inline-flex items-center gap-2">
           <Star className="h-4 w-4 text-amber-300" />
@@ -63,7 +63,7 @@ function StarredPage({ onOpenChat }) {
         </div>
       </div>
 
-      <div className="scrollbar-hide min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto pb-3 pr-1">
+      <div className="scrollbar-hide min-h-0 flex-1 space-y-3 overflow-x-hidden overflow-y-auto pr-1">
         {loading ? (
           <div className="themed-page-card themed-subtitle rounded-[24px] p-5">
             Loading starred messages...

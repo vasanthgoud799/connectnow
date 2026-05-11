@@ -37,20 +37,16 @@ const setViewportVars = () => {
     0,
     Math.round(isKeyboardLikelyOpen ? visualViewport?.offsetLeft || 0 : 0)
   );
-  const visibleBottom = Math.max(
-    240,
-    Math.min(layoutHeight, measuredVisualHeight + viewportOffsetTop)
-  );
   const rawViewportHeight = Math.max(
     240,
-    isKeyboardLikelyOpen ? visibleBottom : layoutHeight
+    isKeyboardLikelyOpen ? measuredVisualHeight : layoutHeight
   );
   const rawViewportWidth = Math.max(
     240,
     isKeyboardLikelyOpen ? measuredVisualWidth : layoutWidth
   );
   const keyboardOffset = isKeyboardLikelyOpen
-    ? Math.max(0, layoutHeight - visibleBottom)
+    ? Math.max(0, layoutHeight - (measuredVisualHeight + viewportOffsetTop))
     : 0;
 
   document.documentElement.style.setProperty(
@@ -95,7 +91,7 @@ export function useVisualViewportHeight() {
     };
     const updateDuringViewportAnimation = () => {
       update();
-      [150, 350, 700, 1000].forEach((delay) => {
+      [0, 150, 350, 700].forEach((delay) => {
         const timeoutId = window.setTimeout(() => {
           timeoutIds.delete(timeoutId);
           update();

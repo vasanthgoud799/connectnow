@@ -56,7 +56,7 @@ function ContactsPage({ onOpenChat }) {
     <>
       <PageScaffold
         className="bg-transparent"
-        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-3"
+        bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto"
         footerClassName="hidden"
       >
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">

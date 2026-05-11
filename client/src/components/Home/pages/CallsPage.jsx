@@ -323,7 +323,7 @@ function CallsPage({ activeUsers = [], callState }) {
 
   return (
     <PageScaffold
-      bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-x-hidden overflow-y-auto pb-3"
+      bodyClassName="no-scrollbar flex min-h-0 flex-col overflow-hidden"
     >
       <div className="mb-5 flex items-center gap-3">
         <div className="relative flex-1">
@@ -353,7 +353,7 @@ function CallsPage({ activeUsers = [], callState }) {
         </div>
       </div>
 
-      <div className="scrollbar-hide space-y-1 overflow-x-hidden pr-1">
+      <div className="scrollbar-hide min-h-0 flex-1 space-y-1 overflow-x-hidden overflow-y-auto pr-1">
         {!callsLoaded && callsLoading ? (
           <StatePanel title="Loading calls..." description="Pulling your latest call history and contact availability." />
         ) : filteredCalls.length === 0 ? (

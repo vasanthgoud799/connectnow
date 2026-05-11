@@ -1003,7 +1003,7 @@ function Home({ activeUsers = [], callState }) {
               </div>
 
               <div
-                className={`themed-bottom-nav grid min-h-16 shrink-0 grid-cols-5 px-1 py-1 md:hidden ${
+                className={`themed-bottom-nav grid shrink-0 grid-cols-5 md:hidden ${
                   activeSection === "chats" && mobileChatView === "chat" ? "hidden" : ""
                 }`}
               >
