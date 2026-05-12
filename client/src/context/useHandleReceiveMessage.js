@@ -10,6 +10,13 @@ import {
   showBrowserNotification,
 } from "@/utils/browserNotifications";
 
+const isDevelopment = import.meta.env.DEV;
+
+const debugRealtime = (event, payload = {}) => {
+  if (!isDevelopment) return;
+  console.debug(`[realtime:${event}]`, payload);
+};
+
 const getMessageNotificationPreview = (message) => {
   const decryptedContent = sanitizeEncryptedMessageText(
     message?.decryptedContent,
@@ -57,27 +64,25 @@ const getNotificationPayloadForMessage = (message, currentUserId) => {
 
 const useHandleReceiveMessage = (socket) => {
   const processedReceiveEventsRef = useRef(new Set());
-  const {
-    addMessages,
-    updateMessageStatus,
-    setUnreadCount,
-    replaceMessage,
-    removeMessageById,
-    updateSelectedGroupData,
-    upsertChatSummary,
-    selectedConversationKey,
-    removeChatSummary,
-    setSelectedChatData,
-    selectedChatData,
-    setSelectedChatMessages,
-  } = useAppStore();
 
   useEffect(() => {
     if (!socket) return;
 
     const handleReceiveMessage = (message) => {
+      const currentState = useAppStore.getState();
       const normalizedIncomingMessage = normalizeMessage(message);
-      if (!normalizedIncomingMessage) return;
+      if (!normalizedIncomingMessage) {
+        debugRealtime("message_ignored", { reason: "normalization_failed" });
+        return;
+      }
+
+      if (!normalizedIncomingMessage.conversationKey) {
+        debugRealtime("message_ignored", {
+          reason: "missing_conversation_key",
+          messageId: normalizedIncomingMessage._id || normalizedIncomingMessage.id,
+        });
+        return;
+      }
 
       const receiveEventKey =
         normalizedIncomingMessage._id ||
@@ -86,6 +91,10 @@ const useHandleReceiveMessage = (socket) => {
         `${normalizedIncomingMessage.conversationKey}:${normalizedIncomingMessage.timestamp}`;
 
       if (receiveEventKey && processedReceiveEventsRef.current.has(receiveEventKey)) {
+        debugRealtime("message_duplicate_event", {
+          eventKey: receiveEventKey,
+          conversationKey: normalizedIncomingMessage.conversationKey,
+        });
         return;
       }
 
@@ -101,7 +110,6 @@ const useHandleReceiveMessage = (socket) => {
         conversationKey: normalizedIncomingMessage?.conversationKey,
       });
 
-      const currentState = useAppStore.getState();
       const conversationMessages = Array.isArray(
         currentState.messagesByConversationKey?.[normalizedIncomingMessage?.conversationKey]
       )
@@ -112,10 +120,17 @@ const useHandleReceiveMessage = (socket) => {
       );
 
       if (duplicateExists) {
-        replaceMessage(normalizedIncomingMessage);
+        currentState.replaceMessage(normalizedIncomingMessage);
       } else {
-        addMessages(normalizedIncomingMessage);
+        currentState.addMessages(normalizedIncomingMessage);
       }
+
+      debugRealtime("message_received", {
+        messageId: normalizedIncomingMessage._id || normalizedIncomingMessage.id,
+        conversationKey: normalizedIncomingMessage.conversationKey,
+        selectedConversationKey: currentState.selectedConversationKey,
+        action: duplicateExists ? "reconciled" : "appended",
+      });
 
       const isIncomingFromOtherUser = senderIdIsOtherUser(
         normalizedIncomingMessage,
@@ -139,13 +154,15 @@ const useHandleReceiveMessage = (socket) => {
           (ack = {}) => {
             if (!ack?.ok) return;
             (ack.updates || []).forEach((update) => {
-              updateMessageStatus(update.messageId, {
+              useAppStore.getState().updateMessageStatus(update.messageId, {
                 status: update.status,
                 seenAt: update.seenAt,
                 deliveredAt: update.seenAt,
               });
             });
-            setUnreadCount(normalizedIncomingMessage.conversationKey, 0);
+            useAppStore
+              .getState()
+              .setUnreadCount(normalizedIncomingMessage.conversationKey, 0);
           }
         );
       }
@@ -191,38 +208,46 @@ const useHandleReceiveMessage = (socket) => {
     };
 
     const handleDelivered = (payload) => {
-      updateMessageStatus(payload.messageId, {
+      useAppStore.getState().updateMessageStatus(payload.messageId, {
         status: payload.status,
         deliveredAt: payload.deliveredAt,
       });
     };
 
     const handleSeen = (payload) => {
-      updateMessageStatus(payload.messageId, {
+      const state = useAppStore.getState();
+      state.updateMessageStatus(payload.messageId, {
         status: payload.status,
         seenAt: payload.seenAt,
         deliveredAt: payload.seenAt,
       });
-      setUnreadCount(payload.conversationKey, 0);
+      state.setUnreadCount(payload.conversationKey, 0);
     };
 
     const handlePollUpdated = (message) => {
-      replaceMessage(normalizeMessage(message));
+      const normalizedMessage = normalizeMessage(message);
+      if (normalizedMessage) {
+        useAppStore.getState().replaceMessage(normalizedMessage);
+      }
     };
 
     const handleMessageUpdated = (message) => {
-      replaceMessage(normalizeMessage(message));
+      const normalizedMessage = normalizeMessage(message);
+      if (normalizedMessage) {
+        useAppStore.getState().replaceMessage(normalizedMessage);
+      }
     };
 
     const handleMessageDeletedForMe = (payload) => {
-      removeMessageById(payload.messageId);
+      useAppStore.getState().removeMessageById(payload.messageId);
     };
 
     const handleGroupUpdated = ({ group, conversationKey }) => {
       if (!group || !conversationKey) return;
 
-      updateSelectedGroupData(group);
-      upsertChatSummary({
+      const state = useAppStore.getState();
+      state.updateSelectedGroupData(group);
+      state.upsertChatSummary({
         conversationKey,
         chatType: "group",
         group,
@@ -235,16 +260,17 @@ const useHandleReceiveMessage = (socket) => {
     const handleGroupRemoved = ({ groupId, conversationKey }) => {
       if (!conversationKey) return;
 
-      removeChatSummary(conversationKey);
+      const state = useAppStore.getState();
+      state.removeChatSummary(conversationKey);
 
-      const selectedGroupId = selectedChatData?._id || selectedChatData?.id;
+      const selectedGroupId = state.selectedChatData?._id || state.selectedChatData?.id;
       if (
-        selectedChatData?.isGroup &&
+        state.selectedChatData?.isGroup &&
         String(selectedGroupId) === String(groupId) &&
-        selectedConversationKey === conversationKey
+        state.selectedConversationKey === conversationKey
       ) {
-        setSelectedChatData(undefined);
-        setSelectedChatMessages([]);
+        state.setSelectedChatData(undefined);
+        state.setSelectedChatMessages([]);
       }
     };
 
@@ -277,21 +303,7 @@ const useHandleReceiveMessage = (socket) => {
       socket.off("group_updated", handleGroupUpdated);
       socket.off("group_removed", handleGroupRemoved);
     };
-  }, [
-    socket,
-    addMessages,
-    updateMessageStatus,
-    setUnreadCount,
-    replaceMessage,
-    removeMessageById,
-    updateSelectedGroupData,
-    upsertChatSummary,
-    selectedConversationKey,
-    removeChatSummary,
-    selectedChatData,
-    setSelectedChatData,
-    setSelectedChatMessages,
-  ]);
+  }, [socket]);
 };
 
 const senderIdIsOtherUser = (message, currentUserId) => {

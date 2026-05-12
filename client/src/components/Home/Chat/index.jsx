@@ -66,6 +66,7 @@ import { isDirectCallBusy } from "@/store/actions/callActions";
 import useMobileFocusGuard from "@/hooks/useMobileFocusGuard";
 import {
   areSameMessage,
+  getDirectConversationKey,
   mergeMessages,
   normalizeMessage,
   removeMessage,
@@ -245,11 +246,6 @@ function validateAttachmentFile(file) {
   }
 
   return { ok: true };
-}
-
-function getDirectConversationKey(userA, userB) {
-  if (!userA || !userB) return undefined;
-  return [String(userA), String(userB)].sort().join(":");
 }
 
 function renderTextWithMentions(text = "") {

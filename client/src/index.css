@@ -643,9 +643,9 @@
   inset: 0;
   width: 100%;
   max-width: 100%;
-  height: 100dvh;
-  min-height: 100dvh;
-  max-height: 100dvh;
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  max-height: var(--app-viewport-height, 100dvh);
   overflow: hidden;
 }
 
@@ -718,6 +718,12 @@
 }
 
 @media (max-width: 768px) {
+  html[data-keyboard-open="true"] .mobile-app-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+  }
+
   .chat-shell {
     height: 100%;
     max-height: 100%;
@@ -751,10 +757,7 @@
 }
 
 .themed-bottom-nav {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  position: relative;
   z-index: 60;
   flex-shrink: 0;
   height: var(--mobile-nav-total-height);
@@ -763,16 +766,6 @@
   background: rgba(6, 10, 20, 0.95);
   color: #cbd5e1;
   padding: 0.25rem 0.25rem calc(env(safe-area-inset-bottom) + 0.25rem);
-}
-
-.mobile-bottom-nav-content {
-  padding-bottom: 0;
-}
-
-@media (max-width: 768px) {
-  .mobile-bottom-nav-content {
-    padding-bottom: var(--mobile-nav-total-height);
-  }
 }
 
 .chat-message-region {

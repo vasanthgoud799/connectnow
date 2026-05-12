@@ -856,11 +856,7 @@ function Home({ activeUsers = [], callState }) {
                 />
               )}
 
-              <div
-                className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${
-                  isBottomNavVisible ? "mobile-bottom-nav-content" : ""
-                }`}
-              >
+              <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
                 {activeSection === "chats" ? (
                   isMobile ? (
                     <AnimatePresence mode="wait" initial={false}>

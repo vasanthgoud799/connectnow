@@ -58,6 +58,16 @@ const attachSocketListeners = (nextSocket) => {
     if (pendingUserRegistration) {
       nextSocket.emit("register-new-user", pendingUserRegistration);
     }
+
+    const { fetchChatSummaries, userInfo } = useAppStore.getState();
+    fetchChatSummaries?.({
+      force: true,
+      currentUserId: connectedUserId || userInfo?.id,
+    }).catch((error) => {
+      if (isDevelopment) {
+        console.debug("Unable to refresh chat summaries after socket reconnect", error);
+      }
+    });
   };
 
   const handleBroadcast = (data) => {

@@ -1,6 +1,24 @@
 const toStringId = (value) =>
   value === undefined || value === null ? "" : String(value);
 
+export const getEntityId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return toStringId(value._id || value.id || value.user?._id || value.user);
+};
+
+export const getDirectConversationKey = (userA, userB) => {
+  const leftId = getEntityId(userA);
+  const rightId = getEntityId(userB);
+  if (!leftId || !rightId) return "";
+  return [leftId, rightId].sort().join(":");
+};
+
+export const getGroupConversationKey = (group) => {
+  const groupId = getEntityId(group);
+  return groupId ? `group:${groupId}` : "";
+};
+
 const LEGACY_DECRYPT_PLACEHOLDERS = new Set([
   "[Unable to decrypt message on this device]",
   "Unable to decrypt message on this device",
@@ -84,8 +102,17 @@ export const getMessageClientId = (message) =>
       message?.messageRequestId
   );
 
-export const getMessageConversationKey = (message) =>
-  toStringId(message?.conversationKey);
+export const getMessageConversationKey = (message) => {
+  const explicitConversationKey = toStringId(message?.conversationKey);
+  if (explicitConversationKey) return explicitConversationKey;
+
+  const groupConversationKey = getGroupConversationKey(message?.group || message?.groupId);
+  if (message?.chatType === "group" || groupConversationKey) {
+    return groupConversationKey;
+  }
+
+  return getDirectConversationKey(message?.sender, message?.recipient);
+};
 
 export const getMessageTimestamp = (message) => {
   const rawValue = message?.timestamp || message?.createdAt || message?.updatedAt;

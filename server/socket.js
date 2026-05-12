@@ -724,7 +724,7 @@ const setupSocket = async (server) => {
         await schedulePendingDeliveryRetry({
           deliveryKey,
           recipientId,
-          message: populatedMessage,
+          message: enrichedMessage,
         });
       }
 

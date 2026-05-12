@@ -1,5 +1,8 @@
 import {
   areSameMessage,
+  getDirectConversationKey,
+  getEntityId,
+  getGroupConversationKey,
   getMessageConversationKey,
   getMessageId,
   mergeMessageRecords,
@@ -32,15 +35,17 @@ const getConversationKeyForSelection = (chatSummaries = [], selectedChatData, cu
   if (!selectedChatData || !selectedChatId) return undefined;
 
   if (selectedChatData?.isGroup) {
-    return selectedChatData?.conversationKey || `group:${selectedChatId}`;
+    return selectedChatData?.conversationKey || getGroupConversationKey(selectedChatId);
   }
 
   return (
+    selectedChatData?.conversationKey ||
     chatSummaries.find((chat) => {
       const participantId = chat.participant?._id || chat.participant?.id;
       return String(participantId) === String(selectedChatId);
     })?.conversationKey ||
-    (currentUserId ? [String(currentUserId), String(selectedChatId)].sort().join(":") : undefined)
+    getDirectConversationKey(currentUserId, selectedChatId) ||
+    undefined
   );
 };
 
@@ -211,7 +216,8 @@ export const createChatSlice = (set, get) => ({
           createdBy: groupPayload.createdBy,
           isGroup: true,
           conversationKey:
-            state.selectedChatData?.conversationKey || `group:${groupPayload._id}`,
+            state.selectedChatData?.conversationKey ||
+            getGroupConversationKey(groupPayload._id),
         },
       };
     }),
@@ -398,16 +404,11 @@ export const createChatSlice = (set, get) => ({
     const normalizedMessage = normalizeMessage(message);
     if (!normalizedMessage) return;
     const isGroupMessage = normalizedMessage.chatType === "group";
-    const recipientId =
-      typeof normalizedMessage.recipient === "string"
-        ? normalizedMessage.recipient
-        : normalizedMessage.recipient?._id || normalizedMessage.recipient?.id;
-    const senderId =
-      typeof normalizedMessage.sender === "string"
-        ? normalizedMessage.sender
-        : normalizedMessage.sender?._id || normalizedMessage.sender?.id;
+    const recipientId = getEntityId(normalizedMessage.recipient);
+    const senderId = getEntityId(normalizedMessage.sender);
     const messageId = getMessageId(normalizedMessage);
     const conversationKey = getMessageConversationKey(normalizedMessage);
+    if (!conversationKey) return;
     const isSelectedConversation = selectedConversationKey === conversationKey;
     const isMobileLayout =
       typeof window !== "undefined" &&
@@ -421,18 +422,15 @@ export const createChatSlice = (set, get) => ({
       selectedChatMessages: isSelectedConversation
         ? mergeMessages(state.selectedChatMessages, normalizedMessage)
         : state.selectedChatMessages,
-      messagesByConversationKey:
-        isSelectedConversation || state.messagesLoadedByConversationKey?.[conversationKey]
-          ? {
-              ...state.messagesByConversationKey,
-              [conversationKey]: mergeMessages(
-                Array.isArray(state.messagesByConversationKey?.[conversationKey])
-                  ? state.messagesByConversationKey[conversationKey]
-                  : [],
-                normalizedMessage
-              ),
-            }
-          : state.messagesByConversationKey,
+      messagesByConversationKey: {
+        ...state.messagesByConversationKey,
+        [conversationKey]: mergeMessages(
+          Array.isArray(state.messagesByConversationKey?.[conversationKey])
+            ? state.messagesByConversationKey[conversationKey]
+            : [],
+          normalizedMessage
+        ),
+      },
       messagesLoadedByConversationKey:
         isSelectedConversation || state.messagesLoadedByConversationKey?.[conversationKey]
           ? {
@@ -501,7 +499,7 @@ export const createChatSlice = (set, get) => ({
           timestamp: normalizedMessage.timestamp,
           status: normalizedMessage.status,
         },
-        unreadCount: senderId !== userInfo?.id ? 1 : 0,
+        unreadCount: isActiveConversation || senderId === userInfo?.id ? 0 : 1,
         updatedAt: normalizedMessage.timestamp,
       });
     }
